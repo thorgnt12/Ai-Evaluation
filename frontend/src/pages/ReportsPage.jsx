@@ -12,7 +12,8 @@ export const ReportsPage = ({ examId, setView }) => {
   const [loading, setLoading] = useState(true);
 
   // Email States
-  const [teacherEmail, setTeacherEmail] = useState('instructor@university.edu');
+  const [teacherEmail, setTeacherEmail] = useS
+  tate('instructor@university.edu');
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
   const [testEmailResult, setTestEmailResult] = useState(null);
 

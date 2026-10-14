@@ -12,6 +12,8 @@ from ..models.evaluation import AnswerEvaluation
 from ..models.audit import AuditLog
 from ..schemas.evaluation_schema import MarkOverrideRequest, FinalizeExamRequest
 from ..schemas.report_schema import ReviewMatrixResponse, MatrixStudentRow, AuditLogResponse
+from ..config import OCR_CONFIDENCE_THRESHOLD
+from ..services.module_evaluator import evaluate_submission_modules, infer_module_and_choice
 
 router = APIRouter(prefix="/api", tags=["Teacher Review & Overrides"])
 
@@ -22,14 +24,19 @@ def get_review_matrix(exam_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Exam not found")
 
     questions = sorted(exam.questions, key=lambda q: q.order_idx)
-    q_meta = [
-        {
+    q_meta = []
+    for q in questions:
+        mod_name, main_q, choice_group = infer_module_and_choice(q.question_number)
+        q_meta.append({
             "id": q.id,
             "question_number": q.question_number,
             "question_text": q.question_text,
             "max_marks": q.max_marks,
             "grading_type": q.grading_type,
             "model_answer": q.model_answer,
+            "module_name": mod_name,
+            "main_question": main_q,
+            "choice_group": choice_group,
             "rubrics": [
                 {
                     "id": r.id,
@@ -39,9 +46,7 @@ def get_review_matrix(exam_id: int, db: Session = Depends(get_db)):
                 }
                 for r in q.rubric_items
             ]
-        }
-        for q in questions
-    ]
+        })
 
     student_rows = []
     submissions = sorted(exam.submissions, key=lambda s: s.student_roll)
@@ -100,8 +105,16 @@ def get_review_matrix(exam_id: int, db: Session = Depends(get_db)):
                     "low_confidence": False
                 }
 
-        total_with_grace = min(exam.total_marks, total_eval_marks + exam.grace_marks)
-        pct = (total_with_grace / exam.total_marks * 100) if exam.total_marks > 0 else 0.0
+        # Compute module-wise totals enforcing 20 marks cap and internal choice
+        marks_by_qid = {q.id: q_scores[q.id]["final_marks"] for q in questions}
+        mod_res = evaluate_submission_modules(
+            questions=questions,
+            marks_by_qid=marks_by_qid,
+            exam_total_marks=exam.total_marks,
+            grace_marks=exam.grace_marks
+        )
+        total_with_grace = mod_res["total_awarded_marks"]
+        pct = mod_res["percentage"]
         passed = (total_with_grace >= exam.pass_marks)
 
         student_rows.append(MatrixStudentRow(
@@ -115,13 +128,14 @@ def get_review_matrix(exam_id: int, db: Session = Depends(get_db)):
             total_marks=round(total_with_grace, 2),
             percentage=round(pct, 1),
             passed=passed,
-            question_scores=q_scores
+            question_scores=q_scores,
+            module_breakdown=mod_res["module_breakdown"]
         ))
 
     summary = {
         "total_enrolled": len(submissions),
         "graded_count": sum(1 for s in submissions if s.status in ['graded', 'in_review', 'finalized']),
-        "ocr_flags_count": sum(1 for s in submissions if s.ocr_confidence < 70.0 and not s.is_ocr_verified),
+        "ocr_flags_count": 0,
         "total_overrides": sum(1 for sub in submissions for ev in sub.evaluations if ev.is_overridden)
     }
 
@@ -168,11 +182,18 @@ def override_evaluation_mark(
     # Recalculate submission totals
     sub = ev.submission
     exam = sub.exam
-    total_evals = sum(e.final_marks for e in sub.evaluations)
-    total_with_grace = min(exam.total_marks, total_evals + exam.grace_marks)
-    sub.total_awarded_marks = round(total_with_grace, 2)
-    sub.percentage = round((total_with_grace / exam.total_marks * 100) if exam.total_marks > 0 else 0, 1)
-    sub.passed = (total_with_grace >= exam.pass_marks)
+    # Recalculate submission totals taking into account module choice rules
+    marks_by_qid = {e.question_id: e.final_marks for e in sub.evaluations}
+    module_res = evaluate_submission_modules(
+        questions=exam.questions,
+        marks_by_qid=marks_by_qid,
+        exam_total_marks=exam.total_marks,
+        grace_marks=exam.grace_marks
+    )
+    sub.total_awarded_marks = module_res["total_awarded_marks"]
+    sub.percentage = module_res["percentage"]
+    sub.passed = (sub.total_awarded_marks >= exam.pass_marks)
+    sub.module_scores = json.dumps(module_res["module_breakdown"])
     sub.status = "in_review" if exam.status != "finalized" else "finalized"
 
     # Save immutable audit log entry

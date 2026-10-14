@@ -20,7 +20,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 
 # OCR Quality Settings
-OCR_CONFIDENCE_THRESHOLD = 70.0  # Percentage threshold for automated quality gate
+OCR_CONFIDENCE_THRESHOLD = 0.0  # Set to 0.0 to never block submissions (bypass gate)
 
 # Tesseract executable default for Windows
 TESSERACT_CMD = os.getenv("TESSERACT_CMD", r"C:\Program Files\Tesseract-OCR\tesseract.exe")

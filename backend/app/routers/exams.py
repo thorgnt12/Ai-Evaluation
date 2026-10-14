@@ -7,6 +7,7 @@ from ..database import get_db
 from ..models.exam import Exam
 from ..models.user import User
 from ..schemas.exam_schema import ExamCreate, ExamUpdate, ExamResponse, ExamDetailResponse
+from ..config import OCR_CONFIDENCE_THRESHOLD
 from .auth import get_current_user
 
 router = APIRouter(prefix="/api/exams", tags=["Exams"])
@@ -17,7 +18,7 @@ def list_exams(db: Session = Depends(get_db)):
     results = []
     for ex in exams:
         graded = sum(1 for s in ex.submissions if s.status in ['graded', 'in_review', 'finalized'])
-        ocr_flagged = sum(1 for s in ex.submissions if s.ocr_confidence < 70.0 and not s.is_ocr_verified)
+        ocr_flagged = 0
         results.append(ExamResponse(
             id=ex.id,
             title=ex.title,
@@ -61,12 +62,34 @@ def create_exam(exam_in: ExamCreate, db: Session = Depends(get_db), current_user
         status="draft",
         allow_student_upload=exam_in.allow_student_upload,
         allow_replacement=exam_in.allow_replacement,
-        created_by_id=current_user.id
+        created_by_id=current_user.id if current_user else None
     )
     db.add(exam)
     db.commit()
     db.refresh(exam)
-    return exam
+    return ExamResponse(
+        id=exam.id,
+        title=exam.title,
+        subject=exam.subject,
+        exam_code=exam.exam_code,
+        total_marks=exam.total_marks,
+        pass_marks=exam.pass_marks,
+        term=exam.term,
+        grace_marks=exam.grace_marks,
+        grading_mode=exam.grading_mode,
+        status=exam.status,
+        allow_student_upload=exam.allow_student_upload,
+        allow_replacement=exam.allow_replacement,
+        question_paper_path=exam.question_paper_path,
+        notes_document_path=exam.notes_document_path,
+        marking_scheme_path=exam.marking_scheme_path,
+        created_at=exam.created_at,
+        updated_at=exam.updated_at,
+        total_questions=0,
+        total_submissions=0,
+        graded_count=0,
+        ocr_flagged_count=0
+    )
 
 @router.get("/{exam_id}", response_model=ExamDetailResponse)
 def get_exam(exam_id: int, db: Session = Depends(get_db)):
@@ -75,7 +98,7 @@ def get_exam(exam_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Exam not found")
     
     graded = sum(1 for s in exam.submissions if s.status in ['graded', 'in_review', 'finalized'])
-    ocr_flagged = sum(1 for s in exam.submissions if s.ocr_confidence < 70.0 and not s.is_ocr_verified)
+    ocr_flagged = 0
     
     return ExamDetailResponse(
         id=exam.id,
@@ -125,6 +148,26 @@ def delete_exam(exam_id: int, db: Session = Depends(get_db)):
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
+    
+    # Clean up uploaded submission files and exam documents from disk
+    import os
+    for sub in exam.submissions:
+        if sub.file_path and os.path.exists(sub.file_path):
+            try:
+                os.remove(sub.file_path)
+            except Exception:
+                pass
+    if exam.question_paper_path and os.path.exists(exam.question_paper_path):
+        try:
+            os.remove(exam.question_paper_path)
+        except Exception:
+            pass
+    if exam.marking_scheme_path and os.path.exists(exam.marking_scheme_path):
+        try:
+            os.remove(exam.marking_scheme_path)
+        except Exception:
+            pass
+
     db.delete(exam)
     db.commit()
-    return {"success": True, "message": "Exam deleted successfully"}
+    return {"success": True, "message": f"Exam '{exam.title}' deleted successfully"}

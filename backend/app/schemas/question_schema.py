@@ -55,7 +55,12 @@ class ParsedQuestionItem(BaseModel):
     max_marks: float
     detected_concepts: Optional[List[str]] = []
     extracted_model_answer: Optional[str] = None
+    has_table: Optional[bool] = False
+    has_diagram: Optional[bool] = False
+    options_group: Optional[str] = None
 
 class QuestionPaperParseResponse(BaseModel):
     raw_text: str
     detected_questions: List[ParsedQuestionItem]
+    engine_used: Optional[str] = "local"
+    total_questions: Optional[int] = 0

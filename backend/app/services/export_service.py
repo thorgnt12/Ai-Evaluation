@@ -78,10 +78,9 @@ def generate_excel_marksheet(exam: Exam) -> bytes:
     submissions = sorted(exam.submissions, key=lambda s: s.student_roll)
     for sub in submissions:
         row_idx += 1
-        total_eval = sum(e.final_marks for e in sub.evaluations)
-        total_score = min(exam.total_marks, total_eval + exam.grace_marks)
-        pct = (total_score / exam.total_marks * 100) if exam.total_marks > 0 else 0.0
-        passed = (total_score >= exam.pass_marks)
+        total_score = sub.total_awarded_marks if sub.total_awarded_marks is not None else min(exam.total_marks, sum(e.final_marks for e in sub.evaluations) + exam.grace_marks)
+        pct = sub.percentage if sub.percentage is not None else ((total_score / exam.total_marks * 100) if exam.total_marks > 0 else 0.0)
+        passed = sub.passed if sub.passed is not None else (total_score >= exam.pass_marks)
         has_override = any(e.is_overridden for e in sub.evaluations)
 
         ws1.cell(row=row_idx, column=1, value=sub.student_roll).alignment = center_align
@@ -293,10 +292,9 @@ def generate_student_pdf_report(submission: Submission, exam: Exam) -> bytes:
     story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#E2E8F0"), spaceBefore=2, spaceAfter=12))
 
     # 2. Student Info & Score Pill Table
-    total_eval = sum(e.final_marks for e in submission.evaluations)
-    total_score = min(exam.total_marks, total_eval + exam.grace_marks)
-    percentage = (total_score / exam.total_marks * 100) if exam.total_marks > 0 else 0.0
-    passed = (total_score >= exam.pass_marks)
+    total_score = submission.total_awarded_marks if submission.total_awarded_marks is not None else min(exam.total_marks, sum(e.final_marks for e in submission.evaluations) + exam.grace_marks)
+    percentage = submission.percentage if submission.percentage is not None else ((total_score / exam.total_marks * 100) if exam.total_marks > 0 else 0.0)
+    passed = submission.passed if submission.passed is not None else (total_score >= exam.pass_marks)
 
     summary_data = [
         [
@@ -315,7 +313,50 @@ def generate_student_pdf_report(submission: Submission, exam: Exam) -> bytes:
         ('RIGHTPADDING', (0, 0), (-1, -1), 10),
     ]))
     story.append(summary_table)
-    story.append(Spacer(1, 14))
+    story.append(Spacer(1, 12))
+
+    # Module Breakdown Table (if available)
+    if submission.module_scores:
+        try:
+            import json
+            m_breakdown = json.loads(submission.module_scores) if isinstance(submission.module_scores, str) else submission.module_scores
+            if m_breakdown and isinstance(m_breakdown, dict):
+                story.append(Paragraph("Module Choice & Evaluation Summary (Max 20M per Module)", h2_style))
+                mod_rows = [
+                    [
+                        Paragraph("<b>Module</b>", cell_bold),
+                        Paragraph("<b>Choice Group</b>", cell_bold),
+                        Paragraph("<b>Selected Option</b>", cell_bold),
+                        Paragraph("<b>Marks Awarded</b>", cell_bold),
+                        Paragraph("<b>Module Max</b>", cell_bold)
+                    ]
+                ]
+                for mod_k, mod_v in m_breakdown.items():
+                    sel_opt = mod_v.get("selected_option", "-")
+                    sel_score = mod_v.get("selected_option_score", 0.0)
+                    opt_details = mod_v.get("options", {}).get(sel_opt, {})
+                    subparts_str = " ".join(opt_details.get("subparts", []))
+                    mod_rows.append([
+                        Paragraph(f"<b>{mod_v.get('module_name', mod_k)}</b>", cell_regular),
+                        Paragraph(mod_v.get("choice_group", "-"), cell_regular),
+                        Paragraph(f"<b>{sel_opt}</b> ({subparts_str})" if subparts_str else f"<b>{sel_opt}</b>", cell_regular),
+                        Paragraph(f"<b>{mod_v.get('awarded_marks', 0.0)}</b> M", cell_regular),
+                        Paragraph(f"{mod_v.get('module_max_marks', 20.0)} M", cell_regular)
+                    ])
+                mod_table = Table(mod_rows, colWidths=[90, 160, 110, 90, 90])
+                mod_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#EFF6FF")),
+                    ('BOX', (0, 0), (-1, -1), 1, colors.HexColor("#CBD5E1")),
+                    ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+                    ('TOPPADDING', (0, 0), (-1, -1), 5),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                ]))
+                story.append(mod_table)
+                story.append(Spacer(1, 12))
+        except Exception:
+            pass
 
     # 3. Question-Wise Detailed Breakdown Table
     story.append(Paragraph("Question-Wise Evaluation & Feedback", h2_style))
@@ -331,8 +372,14 @@ def generate_student_pdf_report(submission: Submission, exam: Exam) -> bytes:
 
     for ev in submission.evaluations:
         q = ev.question
+        if not q and hasattr(exam, 'questions') and exam.questions:
+            q = next((ques for ques in exam.questions if ques.id == ev.question_id), None)
+            
+        q_number = q.question_number if q else f"Q{ev.question_id or '?'}"
+        q_text = (q.question_text[:75] + "...") if (q and q.question_text) else "Question prompt"
+        q_max = q.max_marks if q else 10.0
         ans_snippet = (ev.student_answer_text[:140] + "...") if ev.student_answer_text and len(ev.student_answer_text) > 140 else (ev.student_answer_text or "No answer")
-        
+
         # Build feedback list
         feedback_lines = []
         if ev.strengths and ev.strengths != "[]":
@@ -353,9 +400,9 @@ def generate_student_pdf_report(submission: Submission, exam: Exam) -> bytes:
             feedback_lines.append(f"<font color='#7C3AED'><b>Teacher Note:</b> Mark revised ({ev.override_reason})</font>")
 
         q_table_data.append([
-            Paragraph(f"<b>{q.question_number}</b>", cell_bold),
-            Paragraph(f"<b>{q.question_text[:75]}...</b><br/><font color='#64748B'><i>Answer:</i> \"{ans_snippet}\"</font>", cell_regular),
-            Paragraph(f"<b>{ev.final_marks}</b> / {q.max_marks}", cell_bold),
+            Paragraph(f"<b>{q_number}</b>", cell_bold),
+            Paragraph(f"<b>{q_text}</b><br/><font color='#64748B'><i>Answer:</i> \"{ans_snippet}\"</font>", cell_regular),
+            Paragraph(f"<b>{ev.final_marks}</b> / {q_max}", cell_bold),
             Paragraph("<br/>".join(feedback_lines) if feedback_lines else "Good effort.", feedback_style)
         ])
 

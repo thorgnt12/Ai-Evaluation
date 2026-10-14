@@ -1,14 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { 
   PlusCircle, BookOpen, Users, CheckCircle, AlertTriangle, 
-  BarChart3, FileSpreadsheet, Eye, Play, Sparkles, ArrowRight, ShieldCheck
+  BarChart3, FileSpreadsheet, Eye, Play, Sparkles, ArrowRight, ShieldCheck,
+  Trash2, AlertCircle, Loader2
 } from 'lucide-react';
 import { examsApi, seedApi } from '../api/client';
 import { Badge, GradingModeBadge } from '../components/Badge';
+import { Modal } from '../components/Modal';
 
 export const Dashboard = ({ setView, setSelectedExamId, onExamSelect }) => {
   const [exams, setExams] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [examToDelete, setExamToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+  const [toastMessage, setToastMessage] = useState(null);
+
+  const handleConfirmDelete = async () => {
+    if (!examToDelete) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await examsApi.delete(examToDelete.id);
+      setToastMessage(`Exam "${examToDelete.title}" has been successfully deleted.`);
+      setTimeout(() => setToastMessage(null), 4000);
+      setExamToDelete(null);
+      await fetchExams();
+    } catch (err) {
+      console.error('Error deleting exam:', err);
+      setDeleteError(err.response?.data?.detail || 'Failed to delete the exam. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const fetchExams = async () => {
     setLoading(true);
@@ -45,6 +69,22 @@ export const Dashboard = ({ setView, setSelectedExamId, onExamSelect }) => {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
+      {/* Toast notification */}
+      {toastMessage && (
+        <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm flex items-center justify-between shadow-lg backdrop-blur-md animate-fade-in">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{toastMessage}</span>
+          </div>
+          <button 
+            onClick={() => setToastMessage(null)}
+            className="text-xs text-emerald-400/70 hover:text-emerald-300 underline cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Header Banner */}
       <div className="glass-panel rounded-3xl p-8 border border-slate-800 relative overflow-hidden bg-gradient-to-r from-slate-900 via-indigo-950/40 to-slate-900">
         <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
@@ -97,12 +137,12 @@ export const Dashboard = ({ setView, setSelectedExamId, onExamSelect }) => {
 
         <div className="glass-card rounded-2xl p-5 border border-slate-800">
           <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
-            OCR Quality Flags
+            Graded Submissions
           </div>
-          <div className="text-2xl font-black text-amber-400">
-            {exams.reduce((acc, curr) => acc + (curr.ocr_flagged_count || 0), 0)}
+          <div className="text-2xl font-black text-indigo-400">
+            {exams.reduce((acc, curr) => acc + (curr.graded_count || 0), 0)}
           </div>
-          <div className="text-xs text-slate-400 mt-1">&lt;70% confidence gate</div>
+          <div className="text-xs text-slate-400 mt-1">AI Evaluated</div>
         </div>
 
         <div className="glass-card rounded-2xl p-5 border border-slate-800">
@@ -152,7 +192,19 @@ export const Dashboard = ({ setView, setSelectedExamId, onExamSelect }) => {
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-3">
                     <GradingModeBadge mode={exam.grading_mode} />
-                    {getStatusBadge(exam.status)}
+                    <div className="flex items-center gap-2">
+                      {getStatusBadge(exam.status)}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExamToDelete(exam);
+                        }}
+                        title={`Delete ${exam.title}`}
+                        className="p-1.5 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30 transition-all cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
                   <h3 className="text-xl font-bold text-slate-100 group-hover:text-indigo-300 transition-colors">
@@ -200,10 +252,7 @@ export const Dashboard = ({ setView, setSelectedExamId, onExamSelect }) => {
                       className="py-2.5 px-3 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60 text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                     >
                       <Users className="w-3.5 h-3.5 text-cyan-400" />
-                      Submissions & OCR
-                      {exam.ocr_flagged_count > 0 && (
-                        <span className="w-2 h-2 rounded-full bg-amber-400" />
-                      )}
+                      Submissions & Scripts
                     </button>
 
                     <button
@@ -258,6 +307,70 @@ export const Dashboard = ({ setView, setSelectedExamId, onExamSelect }) => {
           </div>
         )}
       </div>
+
+      {/* Delete Exam Confirmation Modal */}
+      <Modal
+        isOpen={!!examToDelete}
+        onClose={() => {
+          if (!isDeleting) {
+            setExamToDelete(null);
+            setDeleteError(null);
+          }
+        }}
+        title="Delete Examination Workspace"
+        maxWidth="max-w-md"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-sm">
+            <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-semibold text-rose-200">This action cannot be undone.</p>
+              <p className="text-xs text-rose-300/80 leading-relaxed">
+                Deleting <span className="font-bold text-rose-100">"{examToDelete?.title}"</span> will permanently remove the exam configuration, questions, rubrics, and all {examToDelete?.total_submissions || 0} student evaluation records.
+              </p>
+            </div>
+          </div>
+
+          {deleteError && (
+            <div className="p-3 rounded-xl bg-red-950/50 border border-red-500/40 text-red-300 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+              {deleteError}
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={() => {
+                setExamToDelete(null);
+                setDeleteError(null);
+              }}
+              className="px-4 py-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 text-xs font-semibold transition-all cursor-pointer disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={handleConfirmDelete}
+              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-rose-600/30 transition-all cursor-pointer disabled:opacity-50"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Deleting Exam...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Yes, Delete Exam
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

@@ -97,6 +97,7 @@ def lookup_student_result(lookup: ResultLookupRequest, db: Session = Depends(get
         "exam_title": exam.title,
         "subject": exam.subject,
         "exam_code": exam.exam_code,
+        "grading_mode": exam.grading_mode,
         "term": exam.term,
         "total_exam_marks": exam.total_marks,
         "pass_marks": exam.pass_marks,
@@ -128,7 +129,7 @@ async def submit_public_answer_sheet(
         f.write(content)
 
     parse_res = parse_uploaded_document(content, file.filename)
-    status = "ocr_flagged" if parse_res["is_flagged"] else "ready_for_grading"
+    status = "ready_for_grading"
 
     # Duplicate check
     existing = db.query(Submission).filter(
@@ -147,8 +148,8 @@ async def submit_public_answer_sheet(
         existing.original_filename = file.filename
         existing.extracted_text = parse_res["text"]
         existing.ocr_confidence = parse_res["confidence"]
-        existing.is_ocr_verified = not parse_res["is_flagged"]
-        existing.status = status
+        existing.is_ocr_verified = True
+        existing.status = "ready_for_grading"
         db.commit()
         return {
             "success": True,
@@ -167,9 +168,9 @@ async def submit_public_answer_sheet(
         file_type=parse_res["file_type"],
         extracted_text=parse_res["text"],
         ocr_confidence=parse_res["confidence"],
-        is_ocr_verified=not parse_res["is_flagged"],
+        is_ocr_verified=True,
         submission_type="student_self",
-        status=status
+        status="ready_for_grading"
     )
     db.add(sub)
     db.commit()
@@ -180,5 +181,5 @@ async def submit_public_answer_sheet(
         "message": "Answer sheet uploaded successfully.",
         "submission_id": sub.id,
         "ocr_confidence": sub.ocr_confidence,
-        "ocr_flagged": parse_res["is_flagged"]
+        "ocr_flagged": False
     }

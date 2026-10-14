@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, CheckCircle, AlertTriangle, AlertCircle, ExternalLink, 
   Sparkles, History, Edit3, ShieldAlert, BookOpen, Globe
@@ -15,13 +15,22 @@ export const ScoreInspector = ({
   gradingMode, 
   onOverrideSaved 
 }) => {
-  if (!isOpen || !question || !student || !scoreData) return null;
-
-  const [overrideMarks, setOverrideMarks] = useState(scoreData.final_marks);
-  const [overrideReason, setOverrideReason] = useState(scoreData.override_reason || '');
+  const [overrideMarks, setOverrideMarks] = useState(scoreData?.final_marks ?? 0);
+  const [overrideReason, setOverrideReason] = useState(scoreData?.override_reason || '');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  useEffect(() => {
+    if (scoreData) {
+      setOverrideMarks(scoreData.final_marks ?? 0);
+      setOverrideReason(scoreData.override_reason || '');
+      setErrorMsg('');
+      setSuccessMsg('');
+    }
+  }, [scoreData]);
+
+  if (!isOpen || !question || !student || !scoreData) return null;
 
   const handleSaveOverride = async (e) => {
     e.preventDefault();
@@ -82,6 +91,11 @@ export const ScoreInspector = ({
               <Badge variant="primary" size="md">
                 Max {question.max_marks} Marks
               </Badge>
+              {question.module_name && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 font-medium">
+                  {question.module_name} ({question.main_question || 'Option'}) • Max 20M Module
+                </span>
+              )}
               {scoreData.is_overridden && (
                 <Badge variant="warning" size="md">
                   Teacher Overridden
@@ -121,7 +135,14 @@ export const ScoreInspector = ({
               <OCRBadge confidence={student.ocr_confidence} isVerified={student.is_ocr_verified} />
             </div>
             <div className="p-3 rounded-lg bg-slate-900/90 text-sm text-slate-300 font-mono leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto border border-slate-800/80">
-              {scoreData.student_answer || 'No answer text extracted.'}
+              {scoreData.student_answer ? (
+                scoreData.student_answer
+              ) : (
+                <span className="text-slate-400 italic flex items-center gap-2 font-sans text-xs">
+                  <AlertCircle className="w-4 h-4 text-amber-500/80 shrink-0" />
+                  No answer submitted for this question (Student did not attempt or chose alternate option).
+                </span>
+              )}
             </div>
           </div>
 
@@ -172,15 +193,28 @@ export const ScoreInspector = ({
             </div>
           )}
 
-          {/* Scenario B: Web Validation Citations Evidence */}
-          {gradingMode === 'rubric_web_validated' && webEvidence.length > 0 && (
+          {/* Option 1: Moderate Correction Banner */}
+          {(gradingMode === 'notes_grounded' || gradingMode === 'option_1' || gradingMode !== 'rubric_web_validated') && webEvidence.length === 0 && (
+            <div className="p-3.5 rounded-xl bg-indigo-950/30 border border-indigo-500/30 text-xs">
+              <div className="flex items-center gap-2 text-indigo-300 font-semibold mb-1">
+                <BookOpen className="w-4 h-4 text-indigo-400" />
+                Option 1: Notes & Rubric Grounded (Moderate Correction)
+              </div>
+              <p className="text-slate-300 text-[11px] leading-relaxed">
+                Evaluated against teacher reference notes and marking rubric using <b>moderate, balanced correction</b>. Generous partial marks are awarded for core understanding without penalizing strict phrasing.
+              </p>
+            </div>
+          )}
+
+          {/* Option 2: Web Validation Citations Evidence */}
+          {(gradingMode === 'rubric_web_validated' || gradingMode === 'open_web_search' || gradingMode === 'web_search_lenient' || gradingMode === 'option_2' || webEvidence.length > 0) && (
             <div className="p-4 rounded-xl bg-cyan-950/20 border border-cyan-500/30">
-              <div className="flex items-center gap-2 text-cyan-300 font-semibold text-sm mb-2">
+              <div className="flex items-center gap-2 text-cyan-300 font-semibold text-sm mb-1">
                 <Globe className="w-4 h-4 text-cyan-400" />
-                Scenario B: Web Fact Validation Evidence & Citations
+                Option 2: Web Search Reference Citations & Evidence
               </div>
               <p className="text-xs text-cyan-400/80 mb-3">
-                Evidence from approved educational & standards domains used for factual verification:
+                Live web references (Wikipedia, DuckDuckGo, Academic repositories) retrieved and evaluated with <b>lenient, student-friendly correction</b>:
               </p>
               <div className="space-y-2">
                 {webEvidence.map((ev, idx) => (

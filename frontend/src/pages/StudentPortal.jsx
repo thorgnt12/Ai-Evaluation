@@ -4,7 +4,7 @@ import {
   AlertCircle, Sparkles, BookOpen, FileText, ArrowLeft
 } from 'lucide-react';
 import { portalApi } from '../api/client';
-import { Badge, OCRBadge } from '../components/Badge';
+import { Badge, OCRBadge, GradingModeBadge } from '../components/Badge';
 
 export const StudentPortal = ({ setView }) => {
   const [activeTab, setActiveTab] = useState('lookup'); // 'lookup' or 'upload'
@@ -186,10 +186,15 @@ export const StudentPortal = ({ setView }) => {
               {/* Header Banner */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-800">
                 <div>
-                  <span className="text-xs font-mono text-indigo-400 font-bold bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
-                    {result.exam_code}
-                  </span>
-                  <h2 className="text-2xl font-bold text-slate-100 mt-1">{result.exam_title}</h2>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-mono text-indigo-400 font-bold bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                      {result.exam_code}
+                    </span>
+                    {result.grading_mode && (
+                      <GradingModeBadge mode={result.grading_mode} />
+                    )}
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-100">{result.exam_title}</h2>
                   <p className="text-xs text-slate-400">
                     Student: <b className="text-slate-200">{result.student_name}</b> (Roll: {result.student_roll})
                   </p>

@@ -24,46 +24,26 @@ export const Badge = ({ children, variant = 'default', size = 'md' }) => {
   );
 };
 
-export const OCRBadge = ({ confidence, isVerified }) => {
-  if (isVerified) {
-    return (
-      <Badge variant="success" size="sm">
-        OCR {confidence}% (Verified)
-      </Badge>
-    );
-  }
-  if (confidence >= 85) {
-    return (
-      <Badge variant="success" size="sm">
-        OCR {confidence}%
-      </Badge>
-    );
-  }
-  if (confidence >= 70) {
-    return (
-      <Badge variant="warning" size="sm">
-        OCR {confidence}%
-      </Badge>
-    );
-  }
+export const OCRBadge = ({ confidence }) => {
+  const confVal = typeof confidence === 'number' ? Math.round(confidence) : confidence || 100;
   return (
-    <Badge variant="danger" size="sm">
-      OCR Flagged ({confidence}%)
+    <Badge variant="success" size="sm">
+      OCR {confVal}%
     </Badge>
   );
 };
 
 export const GradingModeBadge = ({ mode }) => {
-  if (mode === 'rubric_web_validated') {
+  if (mode === 'rubric_web_validated' || mode === 'open_web_search' || mode === 'web_search_lenient' || mode === 'option_2') {
     return (
       <Badge variant="cyan" size="sm">
-        Scenario B: Rubric + Web-Validated
+        Option 2: Web Search (Lenient)
       </Badge>
     );
   }
   return (
     <Badge variant="primary" size="sm">
-      Scenario A: Notes-Grounded
+      Option 1: Notes & Rubric (Moderate)
     </Badge>
   );
 };

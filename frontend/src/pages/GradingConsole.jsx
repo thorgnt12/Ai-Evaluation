@@ -101,13 +101,25 @@ export const GradingConsole = ({ examId, setView }) => {
             <Sparkles className="w-4 h-4" /> How This Evaluation Operates
           </h4>
           {isScenarioB ? (
-            <p className="text-xs text-slate-300 leading-relaxed">
-              <b>Scenario B (Rubric + Web-Validated Evaluation):</b> The AI extracts concept requirements and mark points directly from your uploaded marking scheme. It verifies student factual claims against trusted academic & standards web sources, assigns partial credit strictly according to your rubric, and surfaces internet evidence for your review.
-            </p>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 text-xs font-semibold text-cyan-300">
+                <Globe className="w-4 h-4 text-cyan-400" />
+                <span>Option 2: Open Web Search Evaluation (Lenient Correction Mode)</span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                The AI grader automatically queries authoritative web sources (Wikipedia, DuckDuckGo, academic repositories) for each question on the question paper. Submissions receive <b>lenient, student-friendly correction</b> that rewards conceptual intuition and understanding generously, surfacing citations and web evidence for teacher transparency.
+              </p>
+            </div>
           ) : (
-            <p className="text-xs text-slate-300 leading-relaxed">
-              <b>Scenario A (Notes-Grounded Evaluation):</b> The AI analyzes student answers against your uploaded lecture notes, syllabus, and model answers using semantic embedding similarity and concept coverage. Contradiction & negation detection flags any opposite claims.
-            </p>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 text-xs font-semibold text-indigo-300">
+                <BookOpen className="w-4 h-4 text-indigo-400" />
+                <span>Option 1: Notes & Rubric Grounded (Moderate Correction Mode)</span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                The AI evaluates student answers against your uploaded lecture notes, syllabus, and rubric using <b>moderate, balanced correction</b>. The engine gives generous partial credit for core understanding and forgives slight wording variations rather than being overly strict.
+              </p>
+            </div>
           )}
         </div>
 
@@ -122,33 +134,29 @@ export const GradingConsole = ({ examId, setView }) => {
                 </h3>
                 <p className="text-xs text-emerald-400/80">
                   Graded {gradeResult.graded_submissions} student script(s).
-                  {gradeResult.blocked_by_ocr_gate > 0 && ` (${gradeResult.blocked_by_ocr_gate} blocked by OCR gate)`}
                 </p>
               </div>
             </div>
 
-            {/* Quality Gate Blocked Scripts */}
-            {gradeResult.blocked_by_ocr_gate > 0 && (
-              <div className="p-3 bg-amber-950/40 border border-amber-500/30 rounded-xl text-xs text-amber-300 flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>
-                  {gradeResult.blocked_by_ocr_gate} low-confidence script(s) were safely blocked from grading until teacher text verification.
-                </span>
-              </div>
-            )}
-
             {/* Quick Result Chips */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
               {gradeResult.results?.map((r, idx) => (
-                <div key={idx} className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between text-xs">
-                  <div>
-                    <span className="font-bold text-slate-200">{r.student_name || r.student_roll}</span>
-                    <span className="block text-[11px] text-slate-400 font-mono">{r.student_roll}</span>
+                <div key={idx} className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-slate-100">{r.student_name || r.student_roll}</span>
+                      <span className="block text-[11px] text-slate-400 font-mono">{r.student_roll}</span>
+                    </div>
+                    <Badge variant="success" size="sm">{r.score} / 50M ({r.percentage}%)</Badge>
                   </div>
-                  {r.status === 'BLOCKED_BY_OCR_GATE' ? (
-                    <Badge variant="danger" size="sm">Blocked (OCR &lt;70%)</Badge>
-                  ) : (
-                    <Badge variant="success" size="sm">{r.score}M ({r.percentage}%)</Badge>
+                  {r.module_breakdown && (
+                    <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-slate-800/80">
+                      {Object.entries(r.module_breakdown).map(([modName, modInfo]) => (
+                        <span key={modName} className="text-[10px] px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-300 font-mono">
+                          {modName} ({modInfo.selected_option}): <b className="text-emerald-400 font-bold">{modInfo.awarded_marks}</b>/{modInfo.module_max_marks}M
+                        </span>
+                      ))}
+                    </div>
                   )}
                 </div>
               ))}

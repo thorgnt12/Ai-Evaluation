@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft, Upload, Users, ShieldAlert, CheckCircle, 
-  FileText, Edit3, Eye, Copy, Check, Sparkles, AlertTriangle
+  FileText, Edit3, Eye, Copy, Check, Sparkles, AlertTriangle,
+  Camera, RefreshCw
 } from 'lucide-react';
 import { examsApi, submissionsApi } from '../api/client';
 import { Badge, OCRBadge } from '../components/Badge';
@@ -17,6 +18,10 @@ export const SubmissionsPage = ({ examId, setView }) => {
   const [selectedSub, setSelectedSub] = useState(null);
   const [correctedText, setCorrectedText] = useState('');
   const [savingCorrection, setSavingCorrection] = useState(false);
+  const [extractingWithLens, setExtractingWithLens] = useState(false);
+  const [extractedAnswers, setExtractedAnswers] = useState([]);
+  const [loadingAnswers, setLoadingAnswers] = useState(false);
+  const [modalTab, setModalTab] = useState('questions'); // 'questions' or 'raw'
   
   // Student Portal Link Copied State
   const [copiedLink, setCopiedLink] = useState(false);
@@ -63,9 +68,59 @@ export const SubmissionsPage = ({ examId, setView }) => {
   };
 
   // Open OCR Verification Modal
-  const handleOpenOcrModal = (sub) => {
+  const handleOpenOcrModal = async (sub) => {
     setSelectedSub(sub);
     setCorrectedText(sub.extracted_text || '');
+    setModalTab('questions');
+    setLoadingAnswers(true);
+    setExtractedAnswers([]);
+
+    // Fetch fresh detail with full extracted text
+    try {
+      const [res, ansRes] = await Promise.all([
+        submissionsApi.get(sub.id),
+        submissionsApi.getExtractedAnswers(examId, sub.id).catch(() => ({ data: { detected_answers: [] } }))
+      ]);
+      if (res.data) {
+        setSelectedSub(res.data);
+        setCorrectedText(res.data.extracted_text || sub.extracted_text || '');
+      }
+      if (ansRes.data?.detected_answers && ansRes.data.detected_answers.length > 0) {
+        setExtractedAnswers(ansRes.data.detected_answers);
+      }
+    } catch (err) {
+      console.warn('Could not load fresh submission detail:', err);
+    } finally {
+      setLoadingAnswers(false);
+    }
+  };
+
+  // Trigger Google Lens Vision AI extraction on demand
+  const handleExtractWithLens = async () => {
+    if (!selectedSub) return;
+    setExtractingWithLens(true);
+    try {
+      const res = await submissionsApi.extractWithLens(examId, selectedSub.id);
+      if (res.data && res.data.extracted_text) {
+        setSelectedSub(prev => ({
+          ...prev,
+          extracted_text: res.data.extracted_text,
+          ocr_confidence: res.data.ocr_confidence,
+          is_ocr_verified: true,
+          status: res.data.status
+        }));
+        setCorrectedText(res.data.extracted_text);
+        const ansRes = await submissionsApi.getExtractedAnswers(examId, selectedSub.id).catch(() => ({ data: { detected_answers: [] } }));
+        if (ansRes.data?.detected_answers) {
+          setExtractedAnswers(ansRes.data.detected_answers);
+        }
+        await fetchData();
+      }
+    } catch (err) {
+      alert('Google Lens Vision extraction failed: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setExtractingWithLens(false);
+    }
   };
 
   // Save Text Correction
@@ -98,7 +153,7 @@ export const SubmissionsPage = ({ examId, setView }) => {
     return <div className="p-12 text-center text-slate-400">Loading submissions...</div>;
   }
 
-  const flaggedCount = submissions.filter(s => s.ocr_confidence < 70 && !s.is_ocr_verified).length;
+  const flaggedCount = submissions.filter(s => s.status === 'ocr_flagged' && !s.is_ocr_verified).length;
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-8 space-y-8">
@@ -151,21 +206,6 @@ export const SubmissionsPage = ({ examId, setView }) => {
         </div>
       </div>
 
-      {/* OCR Quality Gate Alert Notice */}
-      {flaggedCount > 0 && (
-        <div className="p-4 rounded-2xl bg-amber-950/30 border border-amber-500/40 flex items-start gap-3">
-          <ShieldAlert className="w-6 h-6 text-amber-400 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <h4 className="text-sm font-bold text-amber-300">
-              {flaggedCount} Script(s) Flagged by Automated OCR Quality Gate (&lt;70% Confidence)
-            </h4>
-            <p className="text-xs text-amber-300/80 leading-relaxed">
-              To guarantee assessment integrity, low-confidence scans are blocked from automated grading until you perform a side-by-side text verification. Click <b>"Verify Text"</b> on flagged scripts below.
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* Upload Zone */}
       <div className="border-2 border-dashed border-slate-700 hover:border-indigo-500/60 rounded-3xl p-8 text-center bg-slate-900/40 transition-colors">
         <input
@@ -215,7 +255,6 @@ export const SubmissionsPage = ({ examId, setView }) => {
             </thead>
             <tbody className="divide-y divide-slate-800/60">
               {submissions.map((sub) => {
-                const isFlagged = sub.ocr_confidence < 70 && !sub.is_ocr_verified;
                 return (
                   <tr key={sub.id} className="hover:bg-slate-800/30 transition-colors">
                     <td className="py-3.5 px-4 font-mono font-bold text-slate-100">
@@ -226,6 +265,22 @@ export const SubmissionsPage = ({ examId, setView }) => {
                       <span className="block text-[11px] text-slate-400 font-normal">
                         {sub.student_email}
                       </span>
+                      {sub.module_scores && (() => {
+                        try {
+                          const mData = typeof sub.module_scores === 'string' ? JSON.parse(sub.module_scores) : sub.module_scores;
+                          return (
+                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                              {Object.entries(mData).map(([modName, modInfo]) => (
+                                <span key={modName} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 font-mono" title={`${modInfo.choice_group}: Option ${modInfo.selected_option}`}>
+                                  {modName}: <b className="text-emerald-400 font-bold">{modInfo.awarded_marks}</b>/{modInfo.module_max_marks}M
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        } catch (e) {
+                          return null;
+                        }
+                      })()}
                     </td>
                     <td className="py-3.5 px-4 font-mono text-[11px] text-slate-400">
                       {sub.original_filename}
@@ -234,16 +289,12 @@ export const SubmissionsPage = ({ examId, setView }) => {
                       <OCRBadge confidence={sub.ocr_confidence} isVerified={sub.is_ocr_verified} />
                     </td>
                     <td className="py-3.5 px-4 text-center">
-                      {isFlagged ? (
-                        <span className="inline-flex items-center gap-1 text-amber-400 font-semibold text-xs">
-                          <AlertTriangle className="w-3.5 h-3.5" /> Blocked (OCR)
-                        </span>
-                      ) : sub.status === 'graded' ? (
+                      {sub.status === 'graded' ? (
                         <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold text-xs">
-                          <CheckCircle className="w-3.5 h-3.5" /> Graded ({sub.total_awarded_marks}M)
+                          <CheckCircle className="w-3.5 h-3.5" /> Graded ({sub.total_awarded_marks} / 50M)
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-indigo-400 font-semibold text-xs">
+                        <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold text-xs">
                           <CheckCircle className="w-3.5 h-3.5" /> Ready for AI
                         </span>
                       )}
@@ -251,14 +302,10 @@ export const SubmissionsPage = ({ examId, setView }) => {
                     <td className="py-3.5 px-4 text-right">
                       <button
                         onClick={() => handleOpenOcrModal(sub)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ml-auto transition-all cursor-pointer ${
-                          isFlagged
-                            ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md'
-                            : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
-                        }`}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ml-auto transition-all cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-200"
                       >
                         <Edit3 className="w-3.5 h-3.5" />
-                        {isFlagged ? 'Verify Text (Gate)' : 'Inspect Text'}
+                        Inspect / Edit Text
                       </button>
                     </td>
                   </tr>
@@ -273,42 +320,147 @@ export const SubmissionsPage = ({ examId, setView }) => {
       <Modal
         isOpen={!!selectedSub}
         onClose={() => setSelectedSub(null)}
-        title={`Side-by-Side OCR Quality Gate: ${selectedSub?.student_name} (${selectedSub?.student_roll})`}
+        title={`Text Inspector & Editor: ${selectedSub?.student_name} (${selectedSub?.student_roll})`}
         maxWidth="max-w-4xl"
       >
         <div className="space-y-4">
-          <div className="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-slate-800">
+          <div className="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-slate-800 flex-wrap gap-2">
             <div>
               <span className="text-xs text-slate-400">File: </span>
               <span className="text-xs font-mono text-slate-200 font-semibold">{selectedSub?.original_filename}</span>
+              {selectedSub?.extracted_text && (
+                <span className="ml-2 text-[11px] text-slate-400 font-mono">
+                  ({selectedSub.extracted_text.length.toLocaleString()} chars)
+                </span>
+              )}
             </div>
-            <OCRBadge confidence={selectedSub?.ocr_confidence} isVerified={selectedSub?.is_ocr_verified} />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleExtractWithLens}
+                disabled={extractingWithLens}
+                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-indigo-600/30 cursor-pointer disabled:opacity-50"
+              >
+                {extractingWithLens ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Camera className="w-3.5 h-3.5 text-cyan-300" />
+                )}
+                {extractingWithLens ? 'Extracting with Google Lens...' : '✨ Enhance with Google Lens Vision AI'}
+              </button>
+              <OCRBadge confidence={selectedSub?.ocr_confidence} isVerified={selectedSub?.is_ocr_verified} />
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Original Document / Raw Extracted Text */}
-            <div className="space-y-2">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Raw Extracted OCR Output
-              </h4>
-              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-xs font-mono text-slate-300 h-80 overflow-y-auto whitespace-pre-wrap">
-                {selectedSub?.extracted_text || 'No text extracted.'}
+          {/* Modal View Tabs */}
+          <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+            <button
+              type="button"
+              onClick={() => setModalTab('questions')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                modalTab === 'questions' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 bg-slate-900'
+              }`}
+            >
+              📋 Question-Guided Answers ({extractedAnswers.filter(a => a.is_attempted).length} Attempted)
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalTab('raw')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                modalTab === 'raw' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200 bg-slate-900'
+              }`}
+            >
+              📝 Full Document Text & Manual Editor
+            </button>
+          </div>
+
+          {modalTab === 'questions' ? (
+            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+              {loadingAnswers ? (
+                <div className="p-12 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2">
+                  <RefreshCw className="w-5 h-5 text-indigo-400 animate-spin" />
+                  <span>Loading question-guided answers...</span>
+                </div>
+              ) : extractedAnswers.length > 0 ? (
+                extractedAnswers.map((item) => (
+                  <div
+                    key={item.question_id}
+                    className={`p-3.5 rounded-2xl border transition-all ${
+                      item.is_attempted
+                        ? 'bg-slate-950/80 border-slate-800 hover:border-indigo-500/50'
+                        : 'bg-slate-950/30 border-slate-800/40 opacity-70'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold font-mono text-sm text-slate-100">
+                          {item.question_number}
+                        </span>
+                        <span className="text-[11px] text-slate-400 font-normal">
+                          (Max {item.max_marks}M)
+                        </span>
+                      </div>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-semibold ${
+                        item.is_attempted
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : 'bg-slate-800 text-slate-500'
+                      }`}>
+                        {item.is_attempted ? `Attempted (${item.answer_text.length} chars)` : 'Not Attempted / Opted Out'}
+                      </span>
+                    </div>
+
+                    {item.is_attempted ? (
+                      <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs font-mono text-slate-200 whitespace-pre-wrap max-h-36 overflow-y-auto leading-relaxed">
+                        {item.answer_text}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-500 italic pl-1">
+                        Student did not attempt this question (alternative module choice selected).
+                      </p>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <div className="p-8 text-center text-slate-400 text-xs space-y-3">
+                  <p>No questions could be automatically segmented from this script yet.</p>
+                  <button
+                    type="button"
+                    onClick={handleExtractWithLens}
+                    disabled={extractingWithLens}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-md shadow-indigo-600/30 cursor-pointer disabled:opacity-50"
+                  >
+                    <Camera className="w-4 h-4 text-cyan-300" />
+                    Extract Question Answers with Google Lens
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Original Document / Raw Extracted Text */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                  Raw Extracted OCR Output
+                </h4>
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 text-xs font-mono text-slate-300 h-80 overflow-y-auto whitespace-pre-wrap">
+                  {selectedSub?.extracted_text || 'No text extracted.'}
+                </div>
+              </div>
+
+              {/* Editable Correction Area */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
+                  <Edit3 className="w-3.5 h-3.5" /> Teacher Editable Text
+                </h4>
+                <textarea
+                  value={correctedText}
+                  onChange={(e) => setCorrectedText(e.target.value)}
+                  placeholder="Make any manual corrections for typos or unrecognized characters..."
+                  className="w-full p-3 bg-slate-900 rounded-xl border border-indigo-500/50 text-xs font-mono text-slate-100 h-80 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
+                />
               </div>
             </div>
-
-            {/* Editable Correction Area */}
-            <div className="space-y-2">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
-                <Edit3 className="w-3.5 h-3.5" /> Teacher Editable Text (Quality Gate)
-              </h4>
-              <textarea
-                value={correctedText}
-                onChange={(e) => setCorrectedText(e.target.value)}
-                placeholder="Make any manual corrections for typos or unrecognized characters..."
-                className="w-full p-3 bg-slate-900 rounded-xl border border-indigo-500/50 text-xs font-mono text-slate-100 h-80 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
-              />
-            </div>
-          </div>
+          )}
 
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-800">
             <button
@@ -323,7 +475,7 @@ export const SubmissionsPage = ({ examId, setView }) => {
               className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/30 cursor-pointer disabled:opacity-50"
             >
               <CheckCircle className="w-4 h-4" />
-              {savingCorrection ? 'Verifying...' : 'Approve & Mark Ready for AI Grading'}
+              {savingCorrection ? 'Saving...' : 'Save & Update Text'}
             </button>
           </div>
         </div>

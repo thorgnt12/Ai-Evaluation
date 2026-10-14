@@ -14,6 +14,7 @@ class MatrixStudentRow(BaseModel):
     passed: bool
     # map question_id -> evaluation details
     question_scores: Dict[int, Dict[str, Any]]
+    module_breakdown: Optional[Dict[str, Any]] = None
 
 class ReviewMatrixResponse(BaseModel):
     exam_id: int

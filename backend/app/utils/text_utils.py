@@ -127,8 +127,8 @@ def compute_keyword_overlap(student_text: str, expected_keywords: List[str]) -> 
         kw_clean = kw.strip().lower()
         if not kw_clean:
             continue
-        # Support multi-word phrases or single words
-        if " " in kw_clean:
+        # Support multi-word phrases, decimal numbers, or single words
+        if (" " in kw_clean) or ("." in kw_clean) or (kw_clean in student_text.lower()):
             if kw_clean in student_text.lower():
                 found.append(kw)
             else:

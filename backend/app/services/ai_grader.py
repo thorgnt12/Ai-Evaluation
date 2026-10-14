@@ -10,7 +10,8 @@ from ..utils.text_utils import (
     tokenize_words,
     detect_contradictions,
     compute_keyword_overlap,
-    calculate_tf_idf_similarity
+    calculate_tf_idf_similarity,
+    extract_keywords
 )
 from .web_validator import web_validator
 
@@ -58,13 +59,24 @@ class AIGradingEngine:
         self,
         question: Question,
         student_answer: str,
-        grading_mode: str = "notes_grounded",  # "notes_grounded" or "rubric_web_validated"
+        grading_mode: str = "notes_grounded",  # "notes_grounded" (Option 1) or "rubric_web_validated" (Option 2)
         teacher_notes: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Evaluates a single question's answer against rubric criteria or model answer.
+        Evaluates a single question's answer.
+        Supported Modes:
+          - Option 1 (Notes & Rubric): Answer sheet + Question paper + Notes or Rubric.
+            Correction style: Moderate correction (balanced, fair partial credit, not overly strict).
+          - Option 2 (Web Search): Answer sheet + Question paper ONLY.
+            Action: Searches answer on the web for reference ground truth.
+            Correction style: Lenient correction (generous marks, student-friendly scoring).
         """
         student_clean = clean_text(student_answer)
+        max_marks = float(getattr(question, "max_marks", 10.0))
+        q_text = getattr(question, "question_text", "") or ""
+        model_ans = getattr(question, "model_answer", "") or ""
+        rubric_items: List[RubricItem] = getattr(question, "rubric_items", []) or []
+
         if not student_clean or len(student_clean.split()) < 2:
             return {
                 "awarded_marks": 0.0,
@@ -77,113 +89,209 @@ class AIGradingEngine:
                 "web_evidence": []
             }
 
-        rubric_items: List[RubricItem] = question.rubric_items or []
-        max_marks = float(question.max_marks)
         total_awarded = 0.0
-        
         strengths = []
         missed_concepts = []
         contradictions = []
-        
-        # 1. Model answer similarity score component
-        model_ans = question.model_answer or teacher_notes or ""
-        overall_semantic_sim = 0.0
-        if model_ans:
-            overall_semantic_sim = compute_semantic_similarity(student_clean, model_ans)
-
-        # 2. Rubric Concept-by-Concept Weighted Evaluation
-        if rubric_items:
-            for item in rubric_items:
-                concept_weight = float(item.weight_marks)
-                # Parse keywords
-                raw_kws = item.keywords or ""
-                kws = [k.strip() for k in raw_kws.split(",") if k.strip()]
-                
-                # Check keyword overlap
-                kw_ratio, found_kws, missing_kws = compute_keyword_overlap(student_clean, kws)
-                
-                # Check semantic alignment for this specific concept
-                concept_text = f"{item.concept_title}. {item.description or ''}"
-                concept_sim = compute_semantic_similarity(student_clean, concept_text)
-                
-                # Combined concept score (weighted harmonic-mean / blend of semantic + keyword recall)
-                if kws:
-                    concept_score_ratio = (concept_sim * 0.6) + (kw_ratio * 0.4)
-                else:
-                    concept_score_ratio = concept_sim
-                
-                # Contradiction check for this concept
-                detected_contras = detect_contradictions(student_clean, concept_text, kws)
-                if detected_contras:
-                    contradictions.extend(detected_contras)
-                    # Penalize contradicted concepts
-                    concept_score_ratio = max(0.0, concept_score_ratio - 0.5)
-
-                item_marks = round(concept_weight * min(max(concept_score_ratio, 0.0), 1.0), 2)
-                
-                # Minimum threshold to award partial marks
-                if concept_score_ratio >= 0.45:
-                    strengths.append(f"Demonstrated grasp of '{item.concept_title}'")
-                    total_awarded += item_marks
-                elif concept_score_ratio >= 0.25:
-                    strengths.append(f"Partial coverage of '{item.concept_title}'")
-                    missed_concepts.append(f"Needs deeper explanation on '{item.concept_title}' (missing keywords: {', '.join(missing_kws[:3])})")
-                    total_awarded += item_marks
-                else:
-                    missed_concepts.append(f"Missed key requirement: '{item.concept_title}'")
-        else:
-            # Fallback if no specific rubric items: Grade based on model answer semantic similarity
-            score_ratio = overall_semantic_sim
-            if model_ans:
-                kws = tokenize_words(model_ans)[:8]
-                detected_contras = detect_contradictions(student_clean, model_ans, kws)
-                if detected_contras:
-                    contradictions.extend(detected_contras)
-                    score_ratio = max(0.0, score_ratio - 0.4)
-            
-            total_awarded = round(max_marks * min(max(score_ratio, 0.0), 1.0), 2)
-            if score_ratio >= 0.6:
-                strengths.append("High semantic alignment with the expected model solution.")
-            elif score_ratio >= 0.35:
-                strengths.append("Addressed core parts of the question with moderate accuracy.")
-                missed_concepts.append("Some technical depth or key steps are incomplete.")
-            else:
-                missed_concepts.append("Answer diverges significantly from the expected solution.")
-
-        # 3. Scenario B: Rubric + Web Validation
         web_evidence_data = []
-        if grading_mode == "rubric_web_validated":
+
+        is_option_2 = (grading_mode in ["rubric_web_validated", "open_web_search", "web_search_lenient", "option_2", "web_search"])
+
+        # =========================================================================
+        # OPTION 2: WEB SEARCH EVALUATION WITH LENIENT CORRECTION
+        # Inputs: Answersheet + Question Paper ONLY.
+        # Action: Searches answer on the web and evaluates with high leniency.
+        # =========================================================================
+        if is_option_2:
             concept_names = [item.concept_title for item in rubric_items]
             validation_res = web_validator.validate_factual_claims(
                 student_answer=student_clean,
                 rubric_concepts=concept_names,
-                question_text=question.question_text
+                question_text=q_text
             )
             web_evidence_data = validation_res.get("citations", [])
-            for flag in validation_res.get("teacher_flags", []):
-                missed_concepts.append(f"[Web Validation Flag]: {flag}")
+            web_ref_text = validation_res.get("web_reference_text", "")
 
-        # 4. Final bounds checking & feedback formulation
-        total_awarded = max(0.0, min(total_awarded, max_marks))
-        lost_marks = round(max_marks - total_awarded, 2)
-        
-        # Deduce lost marks reasoning
-        if lost_marks == 0:
-            lost_marks_reason = "Full marks awarded. Comprehensive and accurate coverage of all rubric concepts."
-            improvement_suggestions = "Excellent response. Maintained technical precision and clarity."
-        elif lost_marks <= (max_marks * 0.3):
-            lost_marks_reason = f"Deducted {lost_marks} mark(s) due to minor omitted technical details or incomplete terminology."
-            improvement_suggestions = "To achieve full marks, include precise technical definitions and supporting examples."
+            # Semantic similarity against retrieved web knowledge, question prompt & model answer (if any)
+            web_sim = compute_semantic_similarity(student_clean, web_ref_text) if web_ref_text else 0.0
+            q_sim = compute_semantic_similarity(student_clean, q_text)
+            model_sim = compute_semantic_similarity(student_clean, model_ans) if model_ans else 0.0
+
+            # Extract topic keywords from web reference and question
+            topic_kws = extract_keywords(q_text + " " + web_ref_text, top_n=12)
+            kw_ratio, found_kws, missing_kws = compute_keyword_overlap(student_clean, topic_kws)
+
+            # Check for direct contradictions against standard factual principles
+            if web_ref_text:
+                detected_contras = detect_contradictions(student_clean, web_ref_text, topic_kws[:6])
+                if detected_contras:
+                    contradictions.extend(detected_contras)
+
+            # LENIENT CORRECTION SCORING CURVE:
+            # High leniency: reward the student generously if they understand the intuition,
+            # capture key ideas from web references, or address the prompt meaningfully.
+            raw_affinity = max(
+                web_sim,
+                (web_sim * 0.55) + (kw_ratio * 0.45),
+                (q_sim * 0.50) + (kw_ratio * 0.50),
+                kw_ratio * 0.75,
+                model_sim
+            )
+
+            # In lenient mode, minor contradictions only deduct a small fraction
+            if contradictions:
+                raw_affinity = max(0.0, raw_affinity - 0.12)
+
+            word_count = len(student_clean.split())
+
+            if raw_affinity >= 0.22 or (raw_affinity >= 0.14 and kw_ratio >= 0.20):
+                # Full marks (95 - 100%)
+                total_awarded = round(max_marks * min(1.0, 0.95 + (raw_affinity * 0.05)), 2)
+                strengths.append("Demonstrated clear understanding aligned with online academic references.")
+                if found_kws:
+                    strengths.append(f"Successfully addressed core subject concepts: {', '.join(found_kws[:4])}")
+            elif raw_affinity >= 0.12 or kw_ratio >= 0.15 or (word_count >= 12 and raw_affinity >= 0.08):
+                # High lenient marks (80 - 90%)
+                total_awarded = round(max_marks * 0.85, 2)
+                strengths.append("Captured the core logic and fundamental mechanism effectively.")
+                if found_kws:
+                    strengths.append(f"Referenced key domain terms: {', '.join(found_kws[:3])}")
+                if missing_kws:
+                    missed_concepts.append(f"Could be enriched with additional standard details: {', '.join(missing_kws[:2])}")
+            elif raw_affinity >= 0.05 or word_count >= 6:
+                # Solid lenient passing marks (65 - 75%)
+                total_awarded = round(max_marks * 0.70, 2)
+                strengths.append("Demonstrated foundational intuition of the subject.")
+                missed_concepts.append("Explanation covers primary ideas but lacks deeper formal elaboration.")
+            else:
+                # Basic attempt (40 - 50%)
+                total_awarded = round(max_marks * 0.45, 2)
+                missed_concepts.append("Answer touches on the topic but diverges from standard web reference explanations.")
+
+            total_awarded = max(0.0, min(total_awarded, max_marks))
+            lost_marks = round(max_marks - total_awarded, 2)
+
+            if lost_marks == 0:
+                lost_marks_reason = "Full marks awarded via Option 2 (Web Search with Lenient Correction). Answer accurately captures standard web reference concepts."
+                improvement_suggestions = "Outstanding response! Strong alignment with verified online educational sources."
+            elif lost_marks <= (max_marks * 0.20):
+                lost_marks_reason = f"Deducted {lost_marks} mark(s) under lenient web evaluation. Minor omission of secondary standard details."
+                improvement_suggestions = "Great response! Demonstrates solid understanding. Adding one or two illustrative examples would make it complete."
+            else:
+                lost_marks_reason = f"Deducted {lost_marks} mark(s) under lenient web evaluation."
+                improvement_suggestions = "Review the core concepts from the referenced web citations for more comprehensive elaboration."
+
+        # =========================================================================
+        # OPTION 1: NOTES / RUBRIC EVALUATION WITH MODERATE CORRECTION
+        # Inputs: Answersheet + Question Paper + Notes or Rubric.
+        # Action: Evaluates against teacher notes/rubric with balanced, fair correction.
+        #         ("midiocar correction - not too strict")
+        # =========================================================================
         else:
-            lost_marks_reason = f"Deducted {lost_marks} mark(s). Major concepts were missing, insufficient, or contradicted standard definitions."
-            improvement_suggestions = "Review the core concepts in the syllabus/marking scheme and focus on thorough step-by-step reasoning."
+            # 1. Rubric Concept-by-Concept Weighted Evaluation (if rubric items exist)
+            if rubric_items:
+                for item in rubric_items:
+                    concept_weight = float(item.weight_marks)
+                    raw_kws = item.keywords or ""
+                    kws = [k.strip() for k in raw_kws.split(",") if k.strip()]
+                    
+                    kw_ratio, found_kws, missing_kws = compute_keyword_overlap(student_clean, kws)
+                    concept_text = f"{item.concept_title}. Expected concepts: {raw_kws}. {item.description or ''}"
+                    concept_sim = compute_semantic_similarity(student_clean, concept_text)
+                    
+                    # Balanced affinity matching student words to teacher criteria
+                    if kws:
+                        concept_score_ratio = max((concept_sim * 0.55) + (kw_ratio * 0.45), concept_sim * 0.80, kw_ratio * 0.80)
+                    else:
+                        concept_score_ratio = concept_sim
+                    
+                    detected_contras = detect_contradictions(student_clean, concept_text, kws)
+                    if detected_contras:
+                        contradictions.extend(detected_contras)
+                        concept_score_ratio = max(0.0, concept_score_ratio - 0.20)  # Moderate deduction
+
+                    # MODERATE CORRECTION CURVE:
+                    # Fair, balanced, and forgiving of minor phrasing differences
+                    if concept_score_ratio >= 0.42:
+                        # Full marks for capturing concept
+                        item_marks = concept_weight
+                        strengths.append(f"Demonstrated clear understanding of '{item.concept_title}'")
+                        total_awarded += item_marks
+                    elif concept_score_ratio >= 0.28:
+                        # Substantial marks (80 - 90%) for capturing main idea
+                        item_marks = round(concept_weight * 0.85, 2)
+                        strengths.append(f"Good grasp of '{item.concept_title}'")
+                        total_awarded += item_marks
+                    elif concept_score_ratio >= 0.14 or len(found_kws) > 0:
+                        # Generous partial credit (60 - 70%)
+                        item_marks = round(concept_weight * 0.65, 2)
+                        strengths.append(f"Partial coverage of '{item.concept_title}'")
+                        if missing_kws:
+                            missed_concepts.append(f"Could elaborate more on '{item.concept_title}' (missing keywords: {', '.join(missing_kws[:2])})")
+                        total_awarded += item_marks
+                    elif len(student_clean.split()) >= 6:
+                        # Foundational attempt (35 - 45%)
+                        item_marks = round(concept_weight * 0.40, 2)
+                        total_awarded += item_marks
+                        missed_concepts.append(f"Needs further detail on '{item.concept_title}'")
+                    else:
+                        missed_concepts.append(f"Missed key requirement: '{item.concept_title}'")
+            else:
+                # Evaluated against teacher notes / syllabus and model answer
+                ref_source = (teacher_notes or "") + " " + (model_ans or "")
+                ref_clean = ref_source.strip() if ref_source.strip() else q_text
+                
+                overall_semantic_sim = compute_semantic_similarity(student_clean, ref_clean)
+                ref_kws = extract_keywords(ref_clean, top_n=10)
+                kw_ratio, found_kws, missing_kws = compute_keyword_overlap(student_clean, ref_kws)
+
+                affinity = max(overall_semantic_sim, (overall_semantic_sim * 0.60) + (kw_ratio * 0.40), kw_ratio * 0.75)
+
+                if ref_clean:
+                    detected_contras = detect_contradictions(student_clean, ref_clean, ref_kws[:5])
+                    if detected_contras:
+                        contradictions.extend(detected_contras)
+                        affinity = max(0.0, affinity - 0.20)
+
+                # MODERATE CORRECTION CURVE FOR NOTES:
+                if affinity >= 0.38:
+                    total_awarded = round(max_marks * min(1.0, 0.90 + (affinity * 0.15)), 2)
+                    strengths.append("Solid alignment with teacher notes and expected marking criteria.")
+                    if found_kws:
+                        strengths.append(f"Highlighted key concepts: {', '.join(found_kws[:3])}")
+                elif affinity >= 0.24:
+                    total_awarded = round(max_marks * 0.80, 2)
+                    strengths.append("Addressed core principles and key mechanisms effectively.")
+                    if missing_kws:
+                        missed_concepts.append(f"Could expand on: {', '.join(missing_kws[:2])}")
+                elif affinity >= 0.12 or len(student_clean.split()) >= 10:
+                    total_awarded = round(max_marks * 0.60, 2)
+                    strengths.append("Covers fundamental ideas with acceptable explanation.")
+                    if missing_kws:
+                        missed_concepts.append(f"Could incorporate additional details: {', '.join(missing_kws[:3])}")
+                else:
+                    total_awarded = round(max_marks * 0.35, 2)
+                    missed_concepts.append("Touches on the topic but omits important concepts from teacher notes.")
+
+            total_awarded = max(0.0, min(total_awarded, max_marks))
+            lost_marks = round(max_marks - total_awarded, 2)
+
+            if lost_marks == 0:
+                lost_marks_reason = "Full marks awarded via Option 1 (Notes & Rubric with Moderate Correction). Comprehensive coverage of teacher criteria."
+                improvement_suggestions = "Excellent response! Maintained technical clarity and thorough reasoning."
+            elif lost_marks <= (max_marks * 0.25):
+                lost_marks_reason = f"Deducted {lost_marks} mark(s) under moderate correction. Minor secondary details or technical terms were omitted."
+                improvement_suggestions = "Strong answer. To achieve full marks, include specific technical definitions and supporting examples."
+            else:
+                lost_marks_reason = f"Deducted {lost_marks} mark(s) under moderate correction. Certain key requirements from teacher notes/rubric were not fully addressed."
+                improvement_suggestions = "Review the teacher notes and focus on addressing each core rubric criterion."
 
         # Compute AI confidence score
         ai_conf = 0.92
         if contradictions:
-            ai_conf = 0.65  # Flag lower confidence for teacher review when contradictions detected
+            ai_conf = 0.70  # Flag lower confidence for teacher review when contradictions detected
         elif len(student_clean.split()) < 10:
-            ai_conf = 0.75
+            ai_conf = 0.78
             
         return {
             "awarded_marks": total_awarded,

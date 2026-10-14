@@ -174,25 +174,44 @@ export const ReviewMatrix = ({ examId, setView }) => {
             </div>
           </div>
 
+          {/* Module Choice Policy Banner */}
+          <div className="p-3 bg-indigo-950/40 border border-indigo-500/30 rounded-2xl flex items-center justify-between gap-3 text-xs text-indigo-200 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 font-bold rounded text-[11px] uppercase tracking-wide">
+                Module Choice Rule
+              </span>
+              <span>
+                Students answer 1 question per module (e.g. Q1 a,b,c OR Q2 a,b,c). Each module carries <b>max 20 marks</b>. Best option is awarded without exceeding the 20-mark module cap.
+              </span>
+            </div>
+            <span className="text-[11px] font-mono font-bold text-indigo-300 px-2 py-0.5 rounded bg-indigo-900/50">
+              Exam Cap: {matrixData?.total_exam_marks || 50} Marks
+            </span>
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs text-slate-300 border-collapse">
               <thead>
                 <tr className="border-b border-slate-800 bg-slate-950/60 text-slate-400 uppercase tracking-wider text-[10px]">
                   <th className="py-3 px-4 w-28">Roll No</th>
-                  <th className="py-3 px-4 w-44">Student Name</th>
+                  <th className="py-3 px-4 w-52">Student Name</th>
                   {matrixData?.questions?.map((q) => (
-                    <th key={q.id} className="py-3 px-4 text-center">
+                    <th key={q.id} className="py-3 px-3 text-center min-w-[70px]">
+                      {q.module_name && (
+                        <div className="text-[9px] uppercase tracking-wider text-indigo-400 font-bold mb-0.5">
+                          {q.module_name}
+                        </div>
+                      )}
                       <div className="font-bold text-slate-200">{q.question_number}</div>
                       <div className="text-[10px] text-slate-400 font-normal">Max {q.max_marks}M</div>
                     </th>
                   ))}
-                  <th className="py-3 px-4 text-center w-24">Total</th>
+                  <th className="py-3 px-4 text-center w-28">Total</th>
                   <th className="py-3 px-4 text-center w-24">Result</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {matrixData?.students?.map((student) => {
-                  const isOcrFlagged = student.ocr_confidence < 70 && !student.is_ocr_verified;
                   return (
                     <tr key={student.submission_id} className="hover:bg-slate-800/30 transition-colors">
                       <td className="py-3.5 px-4 font-mono font-bold text-slate-200">
@@ -200,10 +219,18 @@ export const ReviewMatrix = ({ examId, setView }) => {
                       </td>
                       <td className="py-3.5 px-4 font-medium text-slate-300">
                         {student.student_name}
-                        {isOcrFlagged && (
-                          <span className="block text-[10px] text-amber-400 font-normal">
-                            OCR Blocked (&lt;70%)
-                          </span>
+                        {student.module_breakdown && (
+                          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                            {Object.entries(student.module_breakdown).map(([modName, modInfo]) => (
+                              <span
+                                key={modName}
+                                className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700/60 text-slate-300 font-mono"
+                                title={`${modInfo.choice_group}: Option ${modInfo.selected_option} scored ${modInfo.awarded_marks}/${modInfo.module_max_marks}M`}
+                              >
+                                {modName}: <b className="text-emerald-400 font-bold">{modInfo.awarded_marks}</b>/{modInfo.module_max_marks}M
+                              </span>
+                            ))}
+                          </div>
                         )}
                       </td>
 
@@ -218,6 +245,7 @@ export const ReviewMatrix = ({ examId, setView }) => {
                           );
                         }
 
+                        const isAttempted = Boolean(score.student_answer && score.student_answer.trim().length > 0);
                         const hasContra = score.has_contradiction;
                         const hasWeb = score.has_web_evidence;
                         const isOverridden = score.is_overridden;
@@ -226,15 +254,25 @@ export const ReviewMatrix = ({ examId, setView }) => {
                           <td 
                             key={q.id} 
                             onClick={() => handleCellClick(student, q)}
-                            className="py-3.5 px-4 text-center cursor-pointer matrix-cell"
+                            className="py-3.5 px-3 text-center cursor-pointer matrix-cell"
                           >
-                            <div className={`py-1.5 px-2.5 rounded-xl border flex items-center justify-center gap-1.5 transition-all ${
+                            <div className={`py-1.5 px-2 rounded-xl border flex items-center justify-center gap-1 transition-all ${
                               isOverridden 
                                 ? 'bg-amber-950/40 border-amber-500/50 text-amber-300 font-bold'
-                                : 'bg-slate-900/90 border-slate-700/60 text-slate-100 hover:border-indigo-500'
+                                : !isAttempted
+                                ? 'bg-slate-950/40 border-slate-800/80 text-slate-500 hover:border-slate-700'
+                                : score.final_marks > 0
+                                ? 'bg-slate-900/90 border-slate-700/80 text-emerald-300 hover:border-emerald-500 font-bold'
+                                : 'bg-slate-900/90 border-slate-700/60 text-slate-300 hover:border-indigo-500'
                             }`}>
-                              <span className="font-mono text-xs font-bold">
-                                {score.final_marks}
+                              <span className="font-mono text-xs">
+                                {isAttempted ? (
+                                  score.final_marks
+                                ) : (
+                                  <span className="text-[10px] text-slate-500 font-mono" title="Optional choice skipped by student">
+                                    0
+                                  </span>
+                                )}
                               </span>
                               {isOverridden && (
                                 <Edit3 className="w-3 h-3 text-amber-400" title="Teacher Overridden" />

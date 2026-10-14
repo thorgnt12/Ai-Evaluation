@@ -31,6 +31,14 @@ export const questionsApi = {
   uploadKnowledge: (examId, formData) => api.post(`/exams/${examId}/upload-knowledge-document`, formData),
   saveQuestions: (examId, questions) => api.post(`/exams/${examId}/save-questions`, questions),
   updateQuestion: (questionId, data) => api.put(`/questions/${questionId}`, data),
+  generateWebAnswers: (examId, data) => api.post(`/exams/${examId}/generate-web-answers`, data),
+  generateSingleWebAnswer: (examId, data) => api.post(`/exams/${examId}/generate-single-web-answer`, data),
+};
+
+export const lensApi = {
+  getStatus: () => api.get('/lens/status'),
+  setKey: (apiKey) => api.post('/lens/set-key', { api_key: apiKey }),
+  reextract: (examId, data) => api.post(`/exams/${examId}/reextract-qp`, data),
 };
 
 export const submissionsApi = {
@@ -39,6 +47,8 @@ export const submissionsApi = {
   list: (examId) => api.get(`/exams/${examId}/submissions`),
   get: (submissionId) => api.get(`/submissions/${submissionId}`),
   correctOCRText: (data) => api.post('/submissions/correct-ocr-text', data),
+  extractWithLens: (examId, submissionId) => api.post(`/exams/${examId}/submissions/${submissionId}/extract-with-lens`),
+  getExtractedAnswers: (examId, submissionId) => api.get(`/exams/${examId}/submissions/${submissionId}/extracted-answers`),
 };
 
 export const gradingApi = {

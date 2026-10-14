@@ -31,6 +31,7 @@ class Submission(Base):
     total_awarded_marks = Column(Float, default=0.0)
     percentage = Column(Float, default=0.0)
     passed = Column(Boolean, default=False)
+    module_scores = Column(Text, nullable=True)  # JSON-encoded module breakdown with OR choice caps
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

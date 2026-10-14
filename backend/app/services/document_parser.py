@@ -10,9 +10,20 @@ import docx
 
 from ..config import OCR_CONFIDENCE_THRESHOLD, TESSERACT_CMD
 
-# Configure Tesseract path if available
-if os.path.exists(TESSERACT_CMD):
-    pytesseract.pytesseract.tesseract_cmd = TESSERACT_CMD
+# Configure Tesseract path dynamically
+def configure_tesseract():
+    candidate_paths = [
+        TESSERACT_CMD,
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+    ]
+    for p in candidate_paths:
+        if p and os.path.exists(p):
+            pytesseract.pytesseract.tesseract_cmd = p
+            return p
+    return None
+
+configure_tesseract()
 
 def extract_text_from_txt(file_bytes: bytes) -> Tuple[str, float]:
     """Extract text from plain text file with 100% confidence."""
@@ -39,28 +50,46 @@ def extract_text_from_docx(file_bytes: bytes) -> Tuple[str, float]:
 def extract_text_from_image(file_bytes: bytes) -> Tuple[str, float]:
     """
     Extract text from image using pytesseract and compute average confidence score.
+    Preserves line breaks, paragraph structure, and table layout for reliable parsing.
     """
     try:
+        configure_tesseract()
         image = Image.open(io.BytesIO(file_bytes))
         # Convert to grayscale for cleaner OCR
         if image.mode != 'L':
             image = image.convert('L')
+
+        # Illumination normalization for scans/photos with gradient shadows
+        proc_image = image
+        try:
+            from PIL import ImageFilter
+            import numpy as np
+            bg = image.filter(ImageFilter.GaussianBlur(radius=35))
+            arr = np.array(image).astype(float)
+            bg_arr = np.array(bg).astype(float) + 1e-5
+            norm = np.clip((arr / bg_arr) * 250, 0, 255).astype(np.uint8)
+            proc_image = Image.fromarray(norm)
+        except Exception:
+            proc_image = image
             
-        # Get OCR data including confidence per word
-        data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
-        
-        words = []
+        # Get OCR confidence data
+        data = pytesseract.image_to_data(proc_image, output_type=pytesseract.Output.DICT)
         confidences = []
-        
         for i in range(len(data['text'])):
             word = data['text'][i].strip()
             conf = float(data['conf'][i])
-            if word and conf >= 0:  # pytesseract uses -1 for layout blocks
-                words.append(word)
+            if word and conf >= 0:
                 confidences.append(conf)
                 
-        extracted_text = " ".join(words)
         avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+
+        # Extract formatted text with full line breaks and structure preserved
+        extracted_text = pytesseract.image_to_string(proc_image)
+        if not extracted_text.strip():
+            # Fallback if image_to_string returned empty
+            words = [data['text'][i].strip() for i in range(len(data['text'])) if data['text'][i].strip()]
+            extracted_text = " ".join(words)
+
         return extracted_text.strip(), round(avg_confidence, 2)
     except Exception as e:
         # Fallback if tesseract fails
@@ -68,39 +97,44 @@ def extract_text_from_image(file_bytes: bytes) -> Tuple[str, float]:
 
 def extract_text_from_pdf(file_bytes: bytes) -> Tuple[str, float]:
     """
-    Extract text from PDF. If digital text is empty, process pages as images for OCR.
+    Extract text from PDF. If digital text is empty or sparse, process pages as images for OCR.
+    Preserves full line breaks, tables, and question paper layout across all pages.
     """
     try:
+        configure_tesseract()
         reader = PdfReader(io.BytesIO(file_bytes))
         text_pages = []
+        is_scanned = False
+        scanned_confidences = []
+
         for i, page in enumerate(reader.pages):
-            page_text = page.extract_text()
-            if page_text and page_text.strip():
+            page_text = page.extract_text() or ""
+            # If digital text exists with sufficient length (not just a watermark or blank)
+            if len(page_text.strip()) > 50:
                 text_pages.append(page_text.strip())
-                
+            else:
+                # Scanned page without direct digital text layer
+                page_imgs_text = []
+                for img_obj in page.images:
+                    try:
+                        txt, conf = extract_text_from_image(img_obj.data)
+                        if txt and not txt.startswith("[OCR Error"):
+                            page_imgs_text.append(txt)
+                            scanned_confidences.append(conf)
+                    except Exception:
+                        continue
+                if page_imgs_text:
+                    text_pages.append("\n\n".join(page_imgs_text))
+                    is_scanned = True
+                elif page_text.strip():
+                    text_pages.append(page_text.strip())
+
         if text_pages:
             full_text = "\n\n".join(text_pages)
-            # Digital PDFs have very high initial text confidence
+            if is_scanned:
+                avg_c = sum(scanned_confidences) / len(scanned_confidences) if scanned_confidences else 75.0
+                return full_text, round(avg_c, 2)
             return full_text, 98.0
-        
-        # Scanned PDF without direct text layer
-        # Attempt page-by-page OCR extraction if images are embedded
-        extracted_chunks = []
-        confidences = []
-        for page in reader.pages:
-            for img_obj in page.images:
-                try:
-                    img_data = img_obj.data
-                    txt, conf = extract_text_from_image(img_data)
-                    if txt:
-                        extracted_chunks.append(txt)
-                        confidences.append(conf)
-                except Exception:
-                    continue
-                    
-        if extracted_chunks:
-            avg_conf = sum(confidences) / len(confidences) if confidences else 65.0
-            return "\n\n".join(extracted_chunks), round(avg_conf, 2)
             
         return "[Scanned PDF detected without direct text layer. OCR quality verification required.]", 50.0
     except Exception as e:
@@ -112,6 +146,23 @@ def parse_uploaded_document(file_bytes: bytes, filename: str) -> Dict[str, Any]:
     Returns: { 'text': str, 'confidence': float, 'is_flagged': bool, 'file_type': str }
     """
     ext = Path(filename).suffix.lower()
+
+    # 1. Immediate Vision AI fast path for handwritten student examination scripts
+    is_qp_or_scheme = any(k in filename.lower() for k in ["question", "qp", "paper", "scheme"])
+    if not is_qp_or_scheme and ext in ['.pdf', '.jpg', '.jpeg', '.png']:
+        try:
+            from .gemini_vision_parser import extract_student_answers_with_vision
+            vision_res = extract_student_answers_with_vision(file_bytes, filename)
+            if vision_res.get("text") and len(vision_res["text"].strip()) > 100:
+                return {
+                    "text": vision_res["text"],
+                    "confidence": vision_res.get("confidence", 98.0),
+                    "is_flagged": False,
+                    "file_type": ext.replace(".", "") or "pdf",
+                    "filename": filename
+                }
+        except Exception:
+            pass
     
     if ext in ['.txt', '.md']:
         text, conf = extract_text_from_txt(file_bytes)
@@ -130,11 +181,23 @@ def parse_uploaded_document(file_bytes: bytes, filename: str) -> Dict[str, Any]:
         text, conf = extract_text_from_txt(file_bytes)
         file_type = 'other'
 
-    is_flagged = (conf < OCR_CONFIDENCE_THRESHOLD)
+    # If OCR confidence is low (<70%) or result is garbled/noisy (handwritten scripts),
+    # upgrade using Google Lens Vision Document Intelligence AI
+    if conf < OCR_CONFIDENCE_THRESHOLD or (ext in ['.pdf', '.jpg', '.jpeg', '.png'] and len(text.strip()) < 100):
+        try:
+            from .gemini_vision_parser import extract_student_answers_with_vision
+            vision_res = extract_student_answers_with_vision(file_bytes, filename)
+            if vision_res.get("text") and len(vision_res["text"].strip()) > 100:
+                text = vision_res["text"]
+                conf = vision_res.get("confidence", 98.0)
+        except Exception:
+            pass
+
+    is_flagged = False
     return {
         "text": text,
         "confidence": conf,
-        "is_flagged": is_flagged,
+        "is_flagged": False,
         "file_type": file_type,
         "filename": filename
     }

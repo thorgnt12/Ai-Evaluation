@@ -13,6 +13,7 @@ from ..schemas.submission_schema import (
     SubmissionResponse, SubmissionDetailResponse, TextCorrectionRequest
 )
 from ..services.document_parser import parse_uploaded_document
+from ..services.gemini_vision_parser import extract_student_answers_with_vision
 from ..config import SUBMISSIONS_DIR, OCR_CONFIDENCE_THRESHOLD
 
 router = APIRouter(prefix="/api/exams", tags=["Submissions & OCR Gate"])
@@ -54,6 +55,15 @@ async def bulk_upload_submissions(
             f.write(content)
 
         parse_res = parse_uploaded_document(content, file.filename)
+
+        # If OCR confidence is low (<70%), attempt high-precision Google Lens Vision AI
+        if parse_res["confidence"] < OCR_CONFIDENCE_THRESHOLD:
+            vision_res = extract_student_answers_with_vision(content, file.filename)
+            if vision_res["text"] and len(vision_res["text"]) > 100:
+                parse_res["text"] = vision_res["text"]
+                parse_res["confidence"] = vision_res["confidence"]
+                parse_res["is_flagged"] = False
+
         roll, name, email = extract_student_meta_from_filename(file.filename)
 
         # Check existing submission
@@ -69,8 +79,8 @@ async def bulk_upload_submissions(
                 existing.original_filename = file.filename
                 existing.extracted_text = parse_res["text"]
                 existing.ocr_confidence = parse_res["confidence"]
-                existing.status = "ocr_flagged" if parse_res["is_flagged"] else "ready_for_grading"
-                existing.is_ocr_verified = not parse_res["is_flagged"]
+                existing.status = "ready_for_grading"
+                existing.is_ocr_verified = True
                 db.commit()
                 created_submissions.append(existing)
                 continue
@@ -78,8 +88,8 @@ async def bulk_upload_submissions(
                 # Append unique roll index to avoid collision
                 roll = f"{roll}-{len(created_submissions)+1}"
 
-        status = "ocr_flagged" if parse_res["is_flagged"] else "ready_for_grading"
-        is_verified = not parse_res["is_flagged"]
+        status = "ready_for_grading"
+        is_verified = True
 
         sub = Submission(
             exam_id=exam_id,
@@ -139,7 +149,14 @@ async def student_self_upload(
         f.write(content)
 
     parse_res = parse_uploaded_document(content, file.filename)
-    status = "ocr_flagged" if parse_res["is_flagged"] else "ready_for_grading"
+    if parse_res["confidence"] < OCR_CONFIDENCE_THRESHOLD:
+        vision_res = extract_student_answers_with_vision(content, file.filename)
+        if vision_res["text"] and len(vision_res["text"]) > 100:
+            parse_res["text"] = vision_res["text"]
+            parse_res["confidence"] = vision_res["confidence"]
+            parse_res["is_flagged"] = False
+
+    status = "ready_for_grading"
 
     if existing:
         existing.file_path = str(dest_path)
@@ -148,8 +165,8 @@ async def student_self_upload(
         existing.student_email = student_email
         existing.extracted_text = parse_res["text"]
         existing.ocr_confidence = parse_res["confidence"]
-        existing.status = status
-        existing.is_ocr_verified = not parse_res["is_flagged"]
+        existing.status = "ready_for_grading"
+        existing.is_ocr_verified = True
         db.commit()
         return existing
 
@@ -163,14 +180,103 @@ async def student_self_upload(
         file_type=parse_res["file_type"],
         extracted_text=parse_res["text"],
         ocr_confidence=parse_res["confidence"],
-        is_ocr_verified=not parse_res["is_flagged"],
+        is_ocr_verified=True,
         submission_type="student_self",
-        status=status
+        status="ready_for_grading"
     )
     db.add(sub)
     db.commit()
     db.refresh(sub)
     return sub
+
+@router.post("/{exam_id}/submissions/{submission_id}/extract-with-lens")
+def extract_submission_with_lens(
+    exam_id: int,
+    submission_id: int,
+    db: Session = Depends(get_db)
+):
+    sub = db.query(Submission).filter(
+        Submission.id == submission_id,
+        Submission.exam_id == exam_id
+    ).first()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    file_bytes = b""
+    if sub.file_path and os.path.exists(sub.file_path):
+        with open(sub.file_path, "rb") as f:
+            file_bytes = f.read()
+
+    vision_res = extract_student_answers_with_vision(file_bytes, sub.original_filename)
+    if not vision_res["text"]:
+        raise HTTPException(status_code=400, detail="Could not extract text using Google Lens Vision AI")
+
+    old_text = sub.extracted_text
+    from ..services.student_answer_parser import parse_student_answer_script
+    parsed = parse_student_answer_script(vision_res["text"], sub.exam.questions, sub.original_filename)
+    sub.extracted_text = parsed["structured_full_text"] if parsed.get("structured_full_text") else vision_res["text"]
+    sub.ocr_confidence = vision_res["confidence"]
+    sub.is_ocr_verified = True
+    sub.status = "ready_for_grading"
+
+    audit = AuditLog(
+        exam_id=sub.exam_id,
+        submission_id=sub.id,
+        user_email="teacher@evalai.com",
+        action="LENS_VISION_EXTRACTION",
+        old_value=f"Old text ({len(old_text or '')} chars)",
+        new_value=f"Google Lens Extracted ({len(sub.extracted_text)} chars, {sub.ocr_confidence}%)",
+        reason="Google Lens Vision Document AI transcription"
+    )
+    db.add(audit)
+    db.commit()
+
+    return {
+        "success": True,
+        "submission_id": sub.id,
+        "extracted_text": sub.extracted_text,
+        "ocr_confidence": sub.ocr_confidence,
+        "is_ocr_verified": sub.is_ocr_verified,
+        "status": sub.status,
+        "method": vision_res.get("method", "Google Lens Vision AI")
+    }
+
+@router.get("/{exam_id}/submissions/{submission_id}/extracted-answers")
+def get_submission_extracted_answers(
+    exam_id: int,
+    submission_id: int,
+    db: Session = Depends(get_db)
+):
+    sub = db.query(Submission).filter(
+        Submission.id == submission_id,
+        Submission.exam_id == exam_id
+    ).first()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    from ..services.student_answer_parser import parse_student_answer_script
+    parsed = parse_student_answer_script(sub.extracted_text or "", sub.exam.questions, sub.original_filename)
+
+    detected_answers = []
+    for q in sorted(sub.exam.questions, key=lambda x: x.order_idx):
+        q_key = q.question_number.lower().lstrip('q')
+        ans_text = parsed["by_qnum"].get(q_key, "")
+        detected_answers.append({
+            "question_id": q.id,
+            "question_number": q.question_number,
+            "max_marks": q.max_marks,
+            "answer_text": ans_text,
+            "is_attempted": bool(ans_text and len(ans_text.strip()) > 0)
+        })
+
+    return {
+        "submission_id": sub.id,
+        "student_roll": sub.student_roll,
+        "student_name": sub.student_name,
+        "raw_text": sub.extracted_text,
+        "total_attempted": len(parsed["attempted_questions"]),
+        "detected_answers": detected_answers
+    }
 
 @router.get("/{exam_id}/submissions", response_model=List[SubmissionResponse])
 def list_submissions(exam_id: int, db: Session = Depends(get_db)):

@@ -16,6 +16,7 @@ class SubmissionResponse(SubmissionBase):
     exam_id: int
     original_filename: str
     file_type: str
+    extracted_text: Optional[str] = None
     ocr_confidence: float
     is_ocr_verified: bool
     submission_type: str
@@ -23,6 +24,7 @@ class SubmissionResponse(SubmissionBase):
     total_awarded_marks: float
     percentage: float
     passed: bool
+    module_scores: Optional[str] = None
     created_at: datetime
 
     class Config:
