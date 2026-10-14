@@ -75,24 +75,24 @@ export const ScoreInspector = ({
     <div className="fixed inset-0 z-50 flex items-center justify-end">
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity"
         onClick={onClose}
       />
 
       {/* Drawer */}
-      <div className="relative w-full max-w-3xl h-full bg-slate-900 border-l border-slate-800 shadow-2xl z-10 flex flex-col overflow-hidden">
+      <div className="relative w-full max-w-3xl h-full bg-white border-l border-slate-200 shadow-2xl z-10 flex flex-col overflow-hidden">
         {/* Top Header */}
-        <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex items-center justify-between">
+        <div className="p-6 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <h2 className="text-xl font-bold text-slate-100">
+              <h2 className="text-xl font-bold text-slate-800">
                 Score Inspector: {question.question_number}
               </h2>
               <Badge variant="primary" size="md">
                 Max {question.max_marks} Marks
               </Badge>
               {question.module_name && (
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 font-medium">
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 font-medium">
                   {question.module_name} ({question.main_question || 'Option'}) • Max 20M Module
                 </span>
               )}
@@ -102,13 +102,13 @@ export const ScoreInspector = ({
                 </Badge>
               )}
             </div>
-            <p className="text-sm text-slate-400 mt-1">
-              Student: <span className="text-slate-200 font-medium">{student.student_name}</span> ({student.student_roll})
+            <p className="text-sm text-slate-500 mt-1">
+              Student: <span className="text-slate-700 font-medium">{student.student_name}</span> ({student.student_roll})
             </p>
           </div>
           <button 
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
           >
             <X className="w-6 h-6" />
           </button>
@@ -117,29 +117,29 @@ export const ScoreInspector = ({
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Question Prompt */}
-          <div className="p-4 rounded-xl bg-slate-800/60 border border-slate-700/60">
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
             <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-2">
-              <BookOpen className="w-4 h-4 text-indigo-400" /> Question Prompt
+              <BookOpen className="w-4 h-4 text-indigo-500" /> Question Prompt
             </h4>
-            <p className="text-sm text-slate-200 leading-relaxed font-medium">
+            <p className="text-sm text-slate-700 leading-relaxed font-medium">
               {question.question_text}
             </p>
           </div>
 
           {/* Student Answer */}
-          <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800">
+          <div className="p-4 rounded-xl bg-white border border-slate-200">
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
                 Student Submitted Answer
               </h4>
               <OCRBadge confidence={student.ocr_confidence} isVerified={student.is_ocr_verified} />
             </div>
-            <div className="p-3 rounded-lg bg-slate-900/90 text-sm text-slate-300 font-mono leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto border border-slate-800/80">
+            <div className="p-3 rounded-lg bg-slate-50 text-sm text-slate-600 font-mono leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto border border-slate-100">
               {scoreData.student_answer ? (
                 scoreData.student_answer
               ) : (
                 <span className="text-slate-400 italic flex items-center gap-2 font-sans text-xs">
-                  <AlertCircle className="w-4 h-4 text-amber-500/80 shrink-0" />
+                  <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
                   No answer submitted for this question (Student did not attempt or chose alternate option).
                 </span>
               )}
@@ -148,12 +148,12 @@ export const ScoreInspector = ({
 
           {/* Contradiction & Negation Alerts */}
           {hasContradictions && (
-            <div className="p-4 rounded-xl bg-rose-950/30 border border-rose-500/40">
-              <div className="flex items-center gap-2 text-rose-400 font-semibold text-sm mb-2">
-                <ShieldAlert className="w-5 h-5 text-rose-400" />
+            <div className="p-4 rounded-xl bg-rose-50 border border-rose-200">
+              <div className="flex items-center gap-2 text-rose-600 font-semibold text-sm mb-2">
+                <ShieldAlert className="w-5 h-5 text-rose-500" />
                 Contradiction & Negation Warning Detected
               </div>
-              <ul className="space-y-1 text-xs text-rose-300">
+              <ul className="space-y-1 text-xs text-rose-600">
                 {scoreData.contradictions.map((c, idx) => (
                   <li key={idx} className="flex items-start gap-1.5">
                     <span className="text-rose-500">•</span>
@@ -161,7 +161,7 @@ export const ScoreInspector = ({
                   </li>
                 ))}
               </ul>
-              <p className="text-xs text-rose-400/80 mt-2 italic">
+              <p className="text-xs text-rose-500 mt-2 italic">
                 AI penalized marks due to conflicting polarity. Please review manually.
               </p>
             </div>
@@ -169,15 +169,15 @@ export const ScoreInspector = ({
 
           {/* Rubric Criteria Checklist */}
           {question.rubrics && question.rubrics.length > 0 && (
-            <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/50">
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
               <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
                 Teacher Rubric Concept Breakdown
               </h4>
               <div className="space-y-2">
                 {question.rubrics.map((r) => (
-                  <div key={r.id} className="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800 flex items-center justify-between text-xs">
+                  <div key={r.id} className="p-2.5 rounded-lg bg-white border border-slate-200 flex items-center justify-between text-xs">
                     <div>
-                      <span className="font-semibold text-slate-200">{r.concept_title}</span>
+                      <span className="font-semibold text-slate-700">{r.concept_title}</span>
                       {r.keywords && (
                         <p className="text-slate-400 text-[11px] mt-0.5">
                           Keywords: {r.keywords}
@@ -195,12 +195,12 @@ export const ScoreInspector = ({
 
           {/* Option 1: Moderate Correction Banner */}
           {(gradingMode === 'notes_grounded' || gradingMode === 'option_1' || gradingMode !== 'rubric_web_validated') && webEvidence.length === 0 && (
-            <div className="p-3.5 rounded-xl bg-indigo-950/30 border border-indigo-500/30 text-xs">
-              <div className="flex items-center gap-2 text-indigo-300 font-semibold mb-1">
-                <BookOpen className="w-4 h-4 text-indigo-400" />
+            <div className="p-3.5 rounded-xl bg-indigo-50 border border-indigo-200 text-xs">
+              <div className="flex items-center gap-2 text-indigo-700 font-semibold mb-1">
+                <BookOpen className="w-4 h-4 text-indigo-500" />
                 Option 1: Notes & Rubric Grounded (Moderate Correction)
               </div>
-              <p className="text-slate-300 text-[11px] leading-relaxed">
+              <p className="text-slate-600 text-[11px] leading-relaxed">
                 Evaluated against teacher reference notes and marking rubric using <b>moderate, balanced correction</b>. Generous partial marks are awarded for core understanding without penalizing strict phrasing.
               </p>
             </div>
@@ -208,29 +208,29 @@ export const ScoreInspector = ({
 
           {/* Option 2: Web Validation Citations Evidence */}
           {(gradingMode === 'rubric_web_validated' || gradingMode === 'open_web_search' || gradingMode === 'web_search_lenient' || gradingMode === 'option_2' || webEvidence.length > 0) && (
-            <div className="p-4 rounded-xl bg-cyan-950/20 border border-cyan-500/30">
-              <div className="flex items-center gap-2 text-cyan-300 font-semibold text-sm mb-1">
-                <Globe className="w-4 h-4 text-cyan-400" />
+            <div className="p-4 rounded-xl bg-teal-50 border border-teal-200">
+              <div className="flex items-center gap-2 text-teal-700 font-semibold text-sm mb-1">
+                <Globe className="w-4 h-4 text-teal-500" />
                 Option 2: Web Search Reference Citations & Evidence
               </div>
-              <p className="text-xs text-cyan-400/80 mb-3">
+              <p className="text-xs text-teal-600 mb-3">
                 Live web references (Wikipedia, DuckDuckGo, Academic repositories) retrieved and evaluated with <b>lenient, student-friendly correction</b>:
               </p>
               <div className="space-y-2">
                 {webEvidence.map((ev, idx) => (
-                  <div key={idx} className="p-2.5 rounded-lg bg-slate-900/80 border border-cyan-900/50 text-xs">
+                  <div key={idx} className="p-2.5 rounded-lg bg-white border border-teal-100 text-xs">
                     <div className="flex items-center justify-between">
-                      <span className="font-medium text-slate-200">{ev.source_title}</span>
+                      <span className="font-medium text-slate-700">{ev.source_title}</span>
                       <a 
                         href={ev.source_url} 
                         target="_blank" 
                         rel="noreferrer"
-                        className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 text-[11px]"
+                        className="text-teal-600 hover:text-teal-700 flex items-center gap-1 text-[11px]"
                       >
                         {ev.domain} <ExternalLink className="w-3 h-3" />
                       </a>
                     </div>
-                    <p className="text-slate-400 text-[11px] mt-1 italic">
+                    <p className="text-slate-500 text-[11px] mt-1 italic">
                       "{ev.evidence_summary}"
                     </p>
                   </div>
@@ -240,16 +240,16 @@ export const ScoreInspector = ({
           )}
 
           {/* AI Structured Feedback */}
-          <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700/60 space-y-3">
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
             <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-indigo-400" /> AI Feedback & Rationale
+              <Sparkles className="w-4 h-4 text-indigo-500" /> AI Feedback & Rationale
             </h4>
             
             {/* Strengths */}
             {scoreData.strengths && scoreData.strengths.length > 0 && (
               <div>
-                <span className="text-xs font-semibold text-emerald-400">Strengths:</span>
-                <ul className="list-disc list-inside text-xs text-slate-300 mt-1 space-y-0.5">
+                <span className="text-xs font-semibold text-emerald-600">Strengths:</span>
+                <ul className="list-disc list-inside text-xs text-slate-600 mt-1 space-y-0.5">
                   {scoreData.strengths.map((s, idx) => (
                     <li key={idx}>{s}</li>
                   ))}
@@ -260,8 +260,8 @@ export const ScoreInspector = ({
             {/* Missed Concepts */}
             {scoreData.missed_concepts && scoreData.missed_concepts.length > 0 && (
               <div>
-                <span className="text-xs font-semibold text-amber-400">Missed Points / Gaps:</span>
-                <ul className="list-disc list-inside text-xs text-slate-300 mt-1 space-y-0.5">
+                <span className="text-xs font-semibold text-amber-600">Missed Points / Gaps:</span>
+                <ul className="list-disc list-inside text-xs text-slate-600 mt-1 space-y-0.5">
                   {scoreData.missed_concepts.map((m, idx) => (
                     <li key={idx}>{m}</li>
                   ))}
@@ -271,15 +271,15 @@ export const ScoreInspector = ({
 
             {/* Lost Marks Rationale */}
             {scoreData.lost_marks_reason && (
-              <div className="text-xs text-slate-300 bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                <span className="font-semibold text-slate-200">Deduction Reason: </span>
+              <div className="text-xs text-slate-600 bg-white p-2.5 rounded-lg border border-slate-200">
+                <span className="font-semibold text-slate-700">Deduction Reason: </span>
                 {scoreData.lost_marks_reason}
               </div>
             )}
 
             {/* Improvement Suggestions */}
             {scoreData.improvement_suggestions && (
-              <div className="text-xs text-indigo-300 bg-indigo-950/30 p-2.5 rounded-lg border border-indigo-500/20">
+              <div className="text-xs text-indigo-700 bg-indigo-50 p-2.5 rounded-lg border border-indigo-200">
                 <span className="font-semibold">Suggestion: </span>
                 {scoreData.improvement_suggestions}
               </div>
@@ -287,31 +287,31 @@ export const ScoreInspector = ({
           </div>
 
           {/* Teacher Mark Override Form */}
-          <form onSubmit={handleSaveOverride} className="p-4 rounded-xl bg-slate-950 border border-slate-700/80 space-y-4">
+          <form onSubmit={handleSaveOverride} className="p-4 rounded-xl bg-white border border-slate-200 space-y-4 shadow-sm">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
-                <Edit3 className="w-4 h-4 text-amber-400" /> Instructor Mark Override
+              <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Edit3 className="w-4 h-4 text-amber-500" /> Instructor Mark Override
               </h4>
-              <div className="text-xs text-slate-400">
-                AI Awarded: <span className="font-bold text-slate-200">{scoreData.ai_marks}</span> / {question.max_marks}
+              <div className="text-xs text-slate-500">
+                AI Awarded: <span className="font-bold text-slate-700">{scoreData.ai_marks}</span> / {question.max_marks}
               </div>
             </div>
 
             {errorMsg && (
-              <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-500/50 text-xs text-rose-300">
+              <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-600">
                 {errorMsg}
               </div>
             )}
 
             {successMsg && (
-              <div className="p-3 rounded-lg bg-emerald-950/50 border border-emerald-500/50 text-xs text-emerald-300">
+              <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-600">
                 {successMsg}
               </div>
             )}
 
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-1">
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-medium text-slate-600 mb-1">
                   Final Marks
                 </label>
                 <input
@@ -321,13 +321,13 @@ export const ScoreInspector = ({
                   max={question.max_marks}
                   value={overrideMarks}
                   onChange={(e) => setOverrideMarks(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 text-sm focus:outline-none focus:border-indigo-500"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-800 text-sm focus:outline-none focus:border-indigo-500"
                   required
                 />
               </div>
 
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-xs font-medium text-slate-600 mb-1">
                   Mandatory Written Reason
                 </label>
                 <input
@@ -335,7 +335,7 @@ export const ScoreInspector = ({
                   placeholder="e.g. Awarded partial credit for correct logic..."
                   value={overrideReason}
                   onChange={(e) => setOverrideReason(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 text-sm focus:outline-none focus:border-indigo-500"
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-800 text-sm focus:outline-none focus:border-indigo-500"
                   required
                 />
               </div>
@@ -344,7 +344,7 @@ export const ScoreInspector = ({
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-2.5 px-4 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-bold rounded-lg text-sm transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              className="w-full py-2.5 px-4 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-sm transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <History className="w-4 h-4" />
               {submitting ? 'Saving to Audit Trail...' : 'Save Override & Record in Audit Trail'}
