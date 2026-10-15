@@ -93,35 +93,35 @@ export const StudentPortal = ({ setView }) => {
         <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 mb-2">
           <GraduationCap className="w-9 h-9" />
         </div>
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
+        <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
           Student Assessment & Result Portal
         </h1>
-        <p className="text-sm text-slate-500 max-w-lg mx-auto">
+        <p className="text-sm text-slate-500 dark:text-slate-400 max-w-lg mx-auto">
           Look up your official exam scorecards, AI feedback, and download signed PDF reports.
         </p>
 
         {/* Tab Switcher */}
         <div className="flex items-center justify-center gap-2 pt-4">
-          <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 inline-flex items-center gap-1.5">
+          <div className="bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 inline-flex items-center gap-1.5">
             <button
               onClick={() => setActiveTab('lookup')}
               className={`px-5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'lookup' 
-                  ? 'bg-white text-indigo-700 shadow-xs' 
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs' 
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <Search className="w-3.5 h-3.5 inline mr-1.5 text-indigo-600" /> Result Lookup & Scorecard
+              <Search className="w-3.5 h-3.5 inline mr-1.5 text-indigo-600 dark:text-indigo-400" /> Result Lookup & Scorecard
             </button>
             <button
               onClick={() => setActiveTab('upload')}
               className={`px-5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'upload' 
-                  ? 'bg-white text-indigo-700 shadow-xs' 
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs' 
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <Upload className="w-3.5 h-3.5 inline mr-1.5 text-indigo-600" /> Self-Submit Answer Sheet
+              <Upload className="w-3.5 h-3.5 inline mr-1.5 text-indigo-600 dark:text-indigo-400" /> Self-Submit Answer Sheet
             </button>
           </div>
         </div>
@@ -131,7 +131,7 @@ export const StudentPortal = ({ setView }) => {
       {activeTab === 'lookup' && (
         <div className="space-y-6">
           {/* Lookup Form */}
-          <form onSubmit={handleLookup} className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-sm space-y-5">
+          <form onSubmit={handleLookup} className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-5">
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
               <Search className="w-4 h-4 text-indigo-600" />
               <span>Enter Your Credentials</span>

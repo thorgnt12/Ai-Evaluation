@@ -88,6 +88,25 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const register = async (fullName, email, password, role = 'teacher') => {
+    setLoading(true);
+    try {
+      await authApi.register({
+        full_name: fullName.trim(),
+        email: email.trim(),
+        password: password.trim(),
+        role: role
+      });
+      // Automatically log in newly registered teacher
+      return await login(email, password);
+    } catch (err) {
+      const message = err.response?.data?.detail || err.message || 'Registration failed.';
+      return { success: false, error: message };
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const demoLogin = async () => {
     return await login(DEMO_CREDENTIALS.email, DEMO_CREDENTIALS.password);
   };
@@ -107,6 +126,7 @@ export const AuthProvider = ({ children }) => {
         loading, 
         authLoading, 
         login, 
+        register,
         demoLogin, 
         logout,
         demoCredentials: DEMO_CREDENTIALS 

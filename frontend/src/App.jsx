@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { Navbar } from './components/Navbar';
 import { LoginPage } from './pages/LoginPage';
 import { Dashboard } from './pages/Dashboard';
@@ -50,12 +51,12 @@ function AppContent() {
   // Initial loading splash
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center text-slate-800">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-200 animate-pulse mb-4">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center text-slate-800 dark:text-slate-100 transition-colors">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-200 dark:shadow-indigo-900/50 animate-pulse mb-4">
           <GraduationCap className="w-9 h-9 text-white" />
         </div>
-        <div className="text-sm font-bold tracking-tight text-slate-700">SmartGrade EvalAI</div>
-        <div className="text-xs text-slate-400 mt-1">Initializing secure session...</div>
+        <div className="text-sm font-bold tracking-tight text-slate-700 dark:text-slate-200">SmartGrade EvalAI</div>
+        <div className="text-xs text-slate-400 dark:text-slate-500 mt-1">Initializing secure session...</div>
       </div>
     );
   }
@@ -65,7 +66,7 @@ function AppContent() {
   const effectiveView = !user && currentView !== 'student-portal' ? 'login' : currentView;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col relative" style={{ fontFamily: "var(--font-sans)" }}>
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col relative transition-colors duration-200" style={{ fontFamily: "var(--font-sans)" }}>
       <Navbar 
         currentView={effectiveView} 
         setView={setView} 
@@ -76,7 +77,7 @@ function AppContent() {
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 animate-fadeIn">
-          <div className="px-4 py-3 rounded-xl border border-emerald-200 bg-white text-slate-700 text-xs font-semibold flex items-center gap-2.5 shadow-lg">
+          <div className="px-4 py-3 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-2.5 shadow-lg">
             <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
             <span>{toastMessage}</span>
           </div>
@@ -155,8 +156,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
