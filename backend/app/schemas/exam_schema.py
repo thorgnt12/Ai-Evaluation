@@ -43,9 +43,22 @@ class ExamResponse(ExamBase):
     total_submissions: int = 0
     graded_count: int = 0
     ocr_flagged_count: int = 0
+    has_evaluation_scheme: bool = False
+    has_question_paper: bool = False
+    has_rubric: bool = False
+    setup_status: str = "complete"
+    created_by_id: Optional[int] = None
+    created_by_name: Optional[str] = None
+    created_by_email: Optional[str] = None
+    assigned_teacher_id: Optional[int] = None
+    assigned_teacher_name: Optional[str] = None
+    assigned_teacher_email: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+class AssignTeacherRequest(BaseModel):
+    teacher_id: Optional[int] = None
 
 class ExamDetailResponse(ExamResponse):
     questions: List[QuestionResponse] = []

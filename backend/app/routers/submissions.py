@@ -8,12 +8,15 @@ from datetime import datetime
 from ..database import get_db
 from ..models.exam import Exam
 from ..models.submission import Submission
+from ..models.user import User
 from ..models.audit import AuditLog
+from .auth import get_current_user
 from ..schemas.submission_schema import (
     SubmissionResponse, SubmissionDetailResponse, TextCorrectionRequest
 )
 from ..services.document_parser import parse_uploaded_document
 from ..services.gemini_vision_parser import extract_student_answers_with_vision
+from ..services.metadata_extractor import extract_student_meta_from_first_page
 from ..config import SUBMISSIONS_DIR, OCR_CONFIDENCE_THRESHOLD
 
 router = APIRouter(prefix="/api/exams", tags=["Submissions & OCR Gate"])
@@ -27,12 +30,12 @@ def extract_student_meta_from_filename(filename: str) -> tuple:
     if len(parts) >= 2:
         roll = parts[0].strip().upper()
         name = " ".join(parts[1:]).strip().title()
-        email = f"{roll.lower()}@university.edu"
+        email = f"{roll.lower()}@hkbk.edu.in"
         return roll, name, email
     else:
         roll = clean_name[:8].upper()
         name = clean_name.replace("_", " ").title()
-        email = f"{roll.lower()}@university.edu"
+        email = f"{roll.lower()}@hkbk.edu.in"
         return roll, name, email
 
 @router.post("/{exam_id}/submissions/bulk-upload", response_model=List[SubmissionResponse])
@@ -64,7 +67,12 @@ async def bulk_upload_submissions(
                 parse_res["confidence"] = vision_res["confidence"]
                 parse_res["is_flagged"] = False
 
-        roll, name, email = extract_student_meta_from_filename(file.filename)
+        # Extract Student USN / Roll Number and Name from first page header
+        roll, name, email = extract_student_meta_from_first_page(
+            text=parse_res.get("text", ""),
+            file_bytes=content,
+            filename=file.filename
+        )
 
         # Check existing submission
         existing = db.query(Submission).filter(
@@ -158,11 +166,15 @@ async def student_self_upload(
 
     status = "ready_for_grading"
 
+    clean_email = student_email.strip().lower()
+    if not clean_email or any(clean_email.endswith(d) for d in ['@university.edu', '@student.edu', '@example.com']):
+        clean_email = f"{student_roll.strip().lower()}@hkbk.edu.in"
+
     if existing:
         existing.file_path = str(dest_path)
         existing.original_filename = file.filename
         existing.student_name = student_name
-        existing.student_email = student_email
+        existing.student_email = clean_email
         existing.extracted_text = parse_res["text"]
         existing.ocr_confidence = parse_res["confidence"]
         existing.status = "ready_for_grading"
@@ -174,7 +186,7 @@ async def student_self_upload(
         exam_id=exam_id,
         student_roll=student_roll.strip().upper(),
         student_name=student_name.strip(),
-        student_email=student_email.strip().lower(),
+        student_email=clean_email,
         original_filename=file.filename,
         file_path=str(dest_path),
         file_type=parse_res["file_type"],
@@ -219,6 +231,17 @@ def extract_submission_with_lens(
     sub.is_ocr_verified = True
     sub.status = "ready_for_grading"
 
+    # Also automatically extract and update USN and Student Name from front cover
+    meta_usn, meta_name, meta_email = extract_student_meta_from_first_page(
+        text=sub.extracted_text,
+        file_bytes=file_bytes,
+        filename=sub.original_filename
+    )
+    if meta_usn and meta_usn != "STUDENT":
+        sub.student_roll = meta_usn
+    if meta_name and meta_name != "Student":
+        sub.student_name = meta_name
+
     audit = AuditLog(
         exam_id=sub.exam_id,
         submission_id=sub.id,
@@ -234,6 +257,8 @@ def extract_submission_with_lens(
     return {
         "success": True,
         "submission_id": sub.id,
+        "student_roll": sub.student_roll,
+        "student_name": sub.student_name,
         "extracted_text": sub.extracted_text,
         "ocr_confidence": sub.ocr_confidence,
         "is_ocr_verified": sub.is_ocr_verified,
@@ -279,7 +304,16 @@ def get_submission_extracted_answers(
     }
 
 @router.get("/{exam_id}/submissions", response_model=List[SubmissionResponse])
-def list_submissions(exam_id: int, db: Session = Depends(get_db)):
+def list_submissions(exam_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    exam = db.query(Exam).filter(Exam.id == exam_id).first()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    if current_user.role not in ["admin", "college_admin"]:
+        if exam.assigned_teacher_id is not None:
+            if exam.assigned_teacher_id != current_user.id:
+                raise HTTPException(status_code=403, detail="Access denied: This exam is assigned specifically to another evaluator.")
+        elif exam.created_by_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Access denied: You do not have permission for this exam.")
     return db.query(Submission).filter(Submission.exam_id == exam_id).order_by(Submission.student_roll).all()
 
 @router.get("/submissions/{submission_id}", response_model=SubmissionDetailResponse)
@@ -304,6 +338,10 @@ def correct_ocr_text(
 
     old_text = sub.extracted_text
     sub.extracted_text = correction.corrected_text
+    if correction.student_roll and correction.student_roll.strip():
+        sub.student_roll = correction.student_roll.strip().upper()
+    if correction.student_name and correction.student_name.strip():
+        sub.student_name = correction.student_name.strip()
     sub.is_ocr_verified = True
     sub.verified_at = datetime.utcnow()
     sub.status = "ready_for_grading"

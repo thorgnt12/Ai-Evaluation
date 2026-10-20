@@ -9,7 +9,7 @@ from app.models.question import Question, RubricItem
 from app.models.exam import Exam
 from app.models.submission import Submission
 from app.models.evaluation import AnswerEvaluation
-from app.services.export_service import generate_excel_marksheet, generate_student_pdf_report
+from app.services.export_service import generate_excel_marksheet, generate_student_pdf_report, generate_web_search_answers_pdf
 from app.services.analytics_service import compute_class_analytics, compute_calibration_benchmark
 
 def test_question_paper_parser():
@@ -299,6 +299,138 @@ def test_module_or_choice_evaluation():
 
     # Overall awarded must be 20 (from Mod 1) + 9 (from Mod 2) = 29.0
     assert res["total_awarded_marks"] == 29.0
+
+
+def test_web_search_answers_pdf_generation():
+    """Tests generating publication-quality PDF for web search reference answers & rubrics."""
+    exam = Exam(
+        id=1,
+        title="Operating Systems Mid-Term",
+        subject="Computer Science",
+        exam_code="CS301-FALL",
+        total_marks=20.0,
+        pass_marks=8.0,
+        grading_mode="rubric_web_validated"
+    )
+
+    test_answers = [
+        {
+            "question_number": "1a",
+            "question_text": "Explain Deadlock in operating systems and the four Coffman conditions.",
+            "max_marks": 10.0,
+            "model_answer": "### 1. In-Depth Theoretical Background\nA deadlock is a permanent blocking condition.\n\n### 2. Algorithmic Mechanism\n- **Phase 1:** Mutual Exclusion\n- **Phase 2:** Hold and Wait\n- **Phase 3:** No Preemption\n- **Phase 4:** Circular Wait",
+            "rubric_items": [
+                {"concept_title": "Conceptual Definition", "description": "Defines deadlock clearly", "weight_marks": 3.0},
+                {"concept_title": "Four Conditions", "description": "All 4 Coffman conditions explained", "weight_marks": 7.0}
+            ],
+            "citations": [
+                {
+                    "source_title": "Deadlock - Wikipedia",
+                    "domain": "en.wikipedia.org",
+                    "source_url": "https://en.wikipedia.org/wiki/Deadlock",
+                    "evidence_summary": "Deadlock is a state in which each member waits for another."
+                }
+            ],
+            "has_table": False,
+            "has_diagram": True
+        },
+        {
+            "question_number": "1b",
+            "question_text": "Explain Virtual Memory & Paging mechanism with page fault handling.",
+            "max_marks": 10.0,
+            "model_answer": "Virtual memory provides an idealized abstraction of storage resources.",
+            "rubric_items": [
+                {"concept_title": "Paging Principles", "description": "Page table mapping", "weight_marks": 5.0},
+                {"concept_title": "Page Fault Resolution", "description": "Interrupt handling & swap", "weight_marks": 5.0}
+            ],
+            "citations": [],
+            "has_table": True,
+            "has_diagram": False
+        }
+    ]
+
+    pdf_bytes = generate_web_search_answers_pdf(exam, answers_data=test_answers)
+    assert len(pdf_bytes) > 1000
+    assert pdf_bytes.startswith(b'%PDF')  # PDF magic bytes
+
+
+def test_export_web_answers_pdf_endpoint():
+    """Tests the /api/exams/{id}/export/web-answers-pdf POST and GET endpoints."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.database import get_db, Base, engine, SessionLocal
+
+    # Setup database with a sample exam
+    Base.metadata.create_all(bind=engine)
+    db = SessionLocal()
+    exam = db.query(Exam).filter(Exam.exam_code == "TEST-WEB-PDF").first()
+    if not exam:
+        exam = Exam(
+            title="Distributed Systems Exam",
+            subject="Computer Science",
+            exam_code="TEST-WEB-PDF",
+            total_marks=10.0,
+            grading_mode="rubric_web_validated"
+        )
+        db.add(exam)
+        db.commit()
+        db.refresh(exam)
+
+        q = Question(
+            exam_id=exam.id,
+            question_number="Q1",
+            question_text="Explain the CAP Theorem and PACELC in distributed systems.",
+            max_marks=10.0,
+            model_answer="The CAP theorem states that any distributed data store can only provide two of Consistency, Availability, Partition tolerance.",
+            order_idx=0
+        )
+        db.add(q)
+        db.flush()
+        r = RubricItem(
+            question_id=q.id,
+            concept_title="CAP Definition",
+            description="Consistency, Availability, Partition tolerance",
+            weight_marks=5.0,
+            order_idx=0
+        )
+        db.add(r)
+        db.commit()
+
+    client = TestClient(app)
+
+    # 1. Test POST endpoint with custom answers payload
+    post_res = client.post(
+        f"/api/exams/{exam.id}/export/web-answers-pdf",
+        json={
+            "answers": [
+                {
+                    "question_number": "Q1",
+                    "question_text": "Explain the CAP Theorem in distributed databases.",
+                    "max_marks": 10.0,
+                    "model_answer": "### 1. CAP Principle\nConsistency, Availability, and Partition Tolerance.\n- **Trade-off:** In network partitions, choose CP or AP.",
+                    "rubric_items": [
+                        {"concept_title": "CAP Definition", "description": "Scope and definitions", "weight_marks": 5.0},
+                        {"concept_title": "Network Partition Case", "description": "Trade-off analysis", "weight_marks": 5.0}
+                    ],
+                    "citations": [
+                        {"domain": "en.wikipedia.org", "source_title": "CAP Theorem", "source_url": "https://en.wikipedia.org/wiki/CAP_theorem", "evidence_summary": "Distributed systems theorem."}
+                    ]
+                }
+            ]
+        }
+    )
+    assert post_res.status_code == 200
+    assert post_res.headers["content-type"] == "application/pdf"
+    assert post_res.content.startswith(b'%PDF')
+    assert "Web_Search_Answers_" in post_res.headers.get("content-disposition", "")
+
+    # 2. Test GET endpoint fallback using database questions
+    get_res = client.get(f"/api/exams/{exam.id}/export/web-answers-pdf")
+    assert get_res.status_code == 200
+    assert get_res.headers["content-type"] == "application/pdf"
+    assert get_res.content.startswith(b'%PDF')
+
+
 
 
 

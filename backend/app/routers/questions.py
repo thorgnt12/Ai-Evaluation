@@ -113,6 +113,25 @@ async def upload_question_paper(
     if not parsed_questions:
         parsed_questions = parse_question_paper_text(raw_text, group_by_main=group_by_main)
 
+    # Persist parsed questions immediately so total_questions is accurate and draft questions are saved
+    if parsed_questions:
+        db.query(Question).filter(Question.exam_id == exam_id).delete()
+        for idx, pq in enumerate(parsed_questions):
+            q = Question(
+                exam_id=exam_id,
+                question_number=pq.question_number,
+                question_text=pq.question_text,
+                max_marks=pq.max_marks or 5.0,
+                grading_type="concept_coverage",
+                order_idx=idx
+            )
+            db.add(q)
+        from ..services.module_evaluator import calculate_exam_max_marks
+        effective_max = calculate_exam_max_marks(parsed_questions)
+        if effective_max > 0:
+            exam.total_marks = effective_max
+        db.commit()
+
     return QuestionPaperParseResponse(
         raw_text=raw_text,
         detected_questions=parsed_questions,
@@ -164,6 +183,25 @@ def reextract_uploaded_qp(
         db.commit()
         parsed_questions = parse_question_paper_text(raw_text, group_by_main=payload.group_by_main)
 
+    # Persist re-extracted questions immediately
+    if parsed_questions:
+        db.query(Question).filter(Question.exam_id == exam_id).delete()
+        for idx, pq in enumerate(parsed_questions):
+            q = Question(
+                exam_id=exam_id,
+                question_number=pq.question_number,
+                question_text=pq.question_text,
+                max_marks=pq.max_marks or 5.0,
+                grading_type="concept_coverage",
+                order_idx=idx
+            )
+            db.add(q)
+        from ..services.module_evaluator import calculate_exam_max_marks
+        effective_max = calculate_exam_max_marks(parsed_questions)
+        if effective_max > 0:
+            exam.total_marks = effective_max
+        db.commit()
+
     return QuestionPaperParseResponse(
         raw_text=exam.question_paper_text or "",
         detected_questions=parsed_questions,
@@ -195,9 +233,17 @@ async def upload_knowledge_document(
     if doc_type == "notes":
         exam.notes_document_path = str(dest_path)
         exam.notes_extracted_text = raw_text
+        if not exam.marking_scheme_path:
+            exam.marking_scheme_path = str(dest_path)
+        if not exam.marking_scheme_text:
+            exam.marking_scheme_text = raw_text
     else:
         exam.marking_scheme_path = str(dest_path)
         exam.marking_scheme_text = raw_text
+        if not exam.notes_document_path:
+            exam.notes_document_path = str(dest_path)
+        if not exam.notes_extracted_text:
+            exam.notes_extracted_text = raw_text
 
     db.commit()
 
@@ -299,11 +345,30 @@ def save_exam_questions(
 
         saved_questions.append(q)
 
+    if not exam.marking_scheme_text:
+        model_answers = []
+        for q in saved_questions:
+            if q.model_answer:
+                model_answers.append(f"Q{q.question_number}:\n{q.model_answer}")
+        if model_answers:
+            exam.marking_scheme_text = "\n\n".join(model_answers)
+            if not exam.marking_scheme_path:
+                exam.marking_scheme_path = f"generated_scheme_{exam_id}.txt"
+
     if total_calc_marks > 0:
         from ..services.module_evaluator import calculate_exam_max_marks
         effective_max = calculate_exam_max_marks(saved_questions)
         exam.total_marks = effective_max if effective_max > 0 else total_calc_marks
-        if exam.status == "draft":
+
+        is_opt2 = exam.grading_mode in [
+            "rubric_web_validated", "open_web_search", 
+            "web_search_lenient", "option_2", "web_search"
+        ]
+        has_scheme_ready = bool(
+            (is_opt2 and exam.marking_scheme_text) or
+            (not is_opt2 and (exam.marking_scheme_path or exam.notes_document_path or exam.marking_scheme_text or exam.notes_extracted_text))
+        )
+        if has_scheme_ready and exam.status == "draft":
             exam.status = "ingestion"
 
     db.commit()

@@ -1,16 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authApi } from '../api/client';
+import { DEMO_CREDENTIALS, DEMO_ADMIN_CREDENTIALS } from './authConstants';
 
 const AuthContext = createContext(null);
-
-export const DEMO_CREDENTIALS = {
-  email: 'teacher@smartgrade.edu',
-  password: 'teacher123',
-  full_name: 'Prof. Eleanor Vance',
-  role: 'teacher',
-  title: 'Lead Evaluator & Course Instructor',
-  institution: 'Faculty of Computer Science & Engineering'
-};
 
 export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(() => localStorage.getItem('smartgrade_token'));
@@ -97,7 +89,7 @@ export const AuthProvider = ({ children }) => {
         password: password.trim(),
         role: role
       });
-      // Automatically log in newly registered teacher
+      // Automatically log in newly registered user
       return await login(email, password);
     } catch (err) {
       const message = err.response?.data?.detail || err.message || 'Registration failed.';
@@ -109,6 +101,10 @@ export const AuthProvider = ({ children }) => {
 
   const demoLogin = async () => {
     return await login(DEMO_CREDENTIALS.email, DEMO_CREDENTIALS.password);
+  };
+
+  const adminDemoLogin = async () => {
+    return await login(DEMO_ADMIN_CREDENTIALS.email, DEMO_ADMIN_CREDENTIALS.password);
   };
 
   const logout = () => {
@@ -128,8 +124,10 @@ export const AuthProvider = ({ children }) => {
         login, 
         register,
         demoLogin, 
+        adminDemoLogin,
         logout,
-        demoCredentials: DEMO_CREDENTIALS 
+        demoCredentials: DEMO_CREDENTIALS,
+        demoAdminCredentials: DEMO_ADMIN_CREDENTIALS
       }}
     >
       {children}

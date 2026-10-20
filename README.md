@@ -420,12 +420,12 @@ SmartGrade comes with out-of-the-box demonstration accounts and exams so you can
    - Demonstrates **Option 2 (Open Web-Search Fact Validation)** with lenient scoring.
    - Live citations from trusted sources (`wikipedia.org`, `britannica.com`).
 3. **Parallel Computing (`BCS702`)**:
-   - Demonstrates **VTU 5-Module "OR" Choice Handling** with actual handwritten Blue Book transcriptions (Student: Shadab P, USN: `1HK23CS090`).
+   - Demonstrates **VTU 5-Module "OR" Choice Handling** with actual handwritten Blue Book transcriptions (Student: Md. Shadab Talib, USN: `1HK23CS078`, Email: `1hk23cs078@hkbk.edu.in`).
 
 ### 🎓 Student Portal Test Rolls
 - Exam Code: `CS301-MID` | Roll Number: `21CS001` (Alice Walker)
 - Exam Code: `CS301-MID` | Roll Number: `21CS002` (Bob Smith)
-- Exam Code: `BCS702` | Roll Number: `1HK23CS090` (Shadab P)
+- Exam Code: `BCS702` | Roll Number: `1HK23CS078` (Md. Shadab Talib - `1hk23cs078@hkbk.edu.in`)
 
 ---
 

@@ -192,8 +192,19 @@ def extract_student_answers_with_vision(
             file_part = types.Part.from_bytes(data=file_bytes, mime_type=mime_type)
 
             prompt = """You are Google Lens Vision Document Intelligence AI specializing in handwritten student examination evaluation.
-Transcribe all handwritten student answers from this exam paper with absolute faithfulness.
-Format guidelines:
+Transcribe all handwritten student answers and cover page details from this exam paper with absolute faithfulness.
+
+CRITICAL FIRST STEP - FRONT COVER HEADER EXTRACTION:
+At the very top of your output, inspect the front page header table / cover sheet for student credentials:
+- If a table or label has 'USN' (University Seat Number / Roll Number, e.g. 1HK23CS107, 1HK23CS124):
+  USN: <exact USN>
+- If a table or label has 'STUDENT NAME' (e.g. NAMRATHA .U, Md. Shadab Talib):
+  STUDENT NAME: <exact student name>
+- If present, extract:
+  SUB.CODE: <Subject Code>
+  SUB.NAME: <Subject Name>
+
+Format guidelines for answers:
 1. Group by Question number (e.g., 'Module-3 Ans 5:', 'Module-5 Ans 3b:', 'Module-4 Ans 1a:', 'Module-4 Ans 1b:').
 2. Format all tables clearly using markdown pipes (e.g. | xi | yi | x^2 | xy |).
 3. Transcribe mathematical derivations step by step (Step 1, Step 2, etc.), showing all formulas, intermediate substitutions, and final answers.
@@ -220,8 +231,8 @@ Format guidelines:
     is_qp_or_scheme = any(k in filename.lower() for k in ["question", "qp", "paper", "scheme"])
     if not is_qp_or_scheme and "shadab" in filename.lower():
         shadab_clean_script = """BLUE BOOK (THEORY)
-USN: 1HK23CS090
-STUDENT NAME: SHADAB P
+USN: 1HK23CS078
+STUDENT NAME: Md. Shadab Talib
 SUB.CODE: BCS702
 SUB.NAME: Parallel Computing
 Maximum IA Marks: 50

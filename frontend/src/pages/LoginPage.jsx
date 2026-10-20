@@ -126,6 +126,50 @@ export const LoginPage = ({ setView }) => {
     }
   };
 
+  const handleAdminDemoLogin = async () => {
+    const adminEmail = 'admin@smartgrade.edu';
+    const adminPassword = 'admin123';
+    setEmail(adminEmail);
+    setPassword(adminPassword);
+    setLoading(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      const result = await login(adminEmail, adminPassword);
+      if (result.success) {
+        setView('dashboard');
+      } else {
+        triggerError(result.error || 'Admin login failed.');
+      }
+    } catch (err) {
+      triggerError('Admin login failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEvaluatorDemoLogin = async () => {
+    const evaluatorEmail = 'priyanshublr537@gmail.com';
+    const evaluatorPassword = 'teacher123';
+    setEmail(evaluatorEmail);
+    setPassword(evaluatorPassword);
+    setLoading(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      const result = await login(evaluatorEmail, evaluatorPassword);
+      if (result.success) {
+        setView('dashboard');
+      } else {
+        triggerError(result.error || 'Evaluator login failed.');
+      }
+    } catch (err) {
+      triggerError('Evaluator login failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex bg-white dark:bg-slate-900 transition-colors">
       {/* Left Panel - Brand & Info */}
@@ -244,18 +288,42 @@ export const LoginPage = ({ setView }) => {
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-3 leading-relaxed">
-              Explore with pre-seeded demo exams, sample answer sheets, and dual grading engines.
+              Explore role-based task isolation: Assigned Evaluator (sees assigned task), Other Teacher (sees 0 tasks), or College Admin (full control).
             </p>
-            <button
-              id="demo-signin-btn"
-              type="button"
-              onClick={handleDemoLogin}
-              disabled={loading}
-              className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm shadow-indigo-200 dark:shadow-indigo-950 transition-all cursor-pointer disabled:opacity-50"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{loading ? 'Signing in...' : '1-Click Demo Login (teacher@smartgrade.edu)'}</span>
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <button
+                id="evaluator-demo-signin-btn"
+                type="button"
+                onClick={handleEvaluatorDemoLogin}
+                disabled={loading}
+                className="py-2 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm shadow-emerald-200 dark:shadow-emerald-950 transition-all cursor-pointer disabled:opacity-50 text-center"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                <span>Priyanshu (Evaluator)</span>
+              </button>
+
+              <button
+                id="demo-signin-btn"
+                type="button"
+                onClick={handleDemoLogin}
+                disabled={loading}
+                className="py-2 px-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm shadow-indigo-200 dark:shadow-indigo-950 transition-all cursor-pointer disabled:opacity-50 text-center"
+              >
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                <span>Eleanor (Other Teacher)</span>
+              </button>
+
+              <button
+                id="admin-demo-signin-btn"
+                type="button"
+                onClick={handleAdminDemoLogin}
+                disabled={loading}
+                className="py-2 px-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm shadow-purple-200 dark:shadow-purple-950 transition-all cursor-pointer disabled:opacity-50 text-center"
+              >
+                <Shield className="w-3.5 h-3.5 shrink-0" />
+                <span>College Admin</span>
+              </button>
+            </div>
           </div>
 
           <div className="relative">
@@ -462,9 +530,8 @@ export const LoginPage = ({ setView }) => {
                   onChange={(e) => setRegRole(e.target.value)}
                   className="w-full px-3 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 text-sm focus:outline-none focus:border-indigo-500"
                 >
-                  <option value="teacher">Instructor / Examiner</option>
-                  <option value="evaluator">Chief Evaluator / Moderator</option>
-                  <option value="admin">Academic Department Head</option>
+                  <option value="teacher">Course Teacher (Views & manages only own exams)</option>
+                  <option value="admin">College Admin (Accesses all college exams & analytics)</option>
                 </select>
               </div>
 

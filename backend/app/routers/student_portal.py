@@ -38,22 +38,44 @@ def list_public_exams(db: Session = Depends(get_db)):
 
 @router.post("/lookup-result")
 def lookup_student_result(lookup: ResultLookupRequest, db: Session = Depends(get_db)):
-    exam = db.query(Exam).filter(Exam.exam_code.ilike(lookup.exam_code.strip())).first()
+    from sqlalchemy import func
+    import re
+
+    clean_code = lookup.exam_code.strip()
+    clean_roll = lookup.student_roll.strip()
+
+    exam = db.query(Exam).filter(Exam.exam_code.ilike(clean_code)).first()
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found with provided exam code.")
 
-    query = db.query(Submission).filter(
+    # 1. Exact case-insensitive match on student_roll
+    sub = db.query(Submission).filter(
         Submission.exam_id == exam.id,
-        Submission.student_roll.ilike(lookup.student_roll.strip())
-    )
-    if lookup.student_email:
-        query = query.filter(Submission.student_email.ilike(lookup.student_email.strip()))
+        func.lower(func.trim(Submission.student_roll)) == clean_roll.lower()
+    ).first()
 
-    sub = query.first()
+    # 2. Resilient alphanumeric match (e.g. handles hyphens or spaces, e.g. '1hk23cs107' vs '1HK23CS107')
+    if not sub:
+        alnum_input = re.sub(r'[^A-Za-z0-9]', '', clean_roll).lower()
+        if alnum_input:
+            all_subs = db.query(Submission).filter(Submission.exam_id == exam.id).all()
+            for s in all_subs:
+                s_alnum = re.sub(r'[^A-Za-z0-9]', '', s.student_roll or '').lower()
+                if s_alnum == alnum_input:
+                    sub = s
+                    break
+
+    # 3. Optional fallback search by student email
+    if not sub and lookup.student_email:
+        sub = db.query(Submission).filter(
+            Submission.exam_id == exam.id,
+            func.lower(func.trim(Submission.student_email)) == lookup.student_email.strip().lower()
+        ).first()
+
     if not sub:
         raise HTTPException(
             status_code=404,
-            detail=f"No record found for roll number '{lookup.student_roll}' in exam '{exam.exam_code}'."
+            detail=f"No record found for USN/Roll Number '{lookup.student_roll}' in exam '{exam.exam_code}'."
         )
 
     if sub.status not in ["graded", "in_review", "finalized"]:
@@ -143,9 +165,14 @@ async def submit_public_answer_sheet(
             detail=f"An answer sheet is already submitted for roll number '{student_roll}'."
         )
 
+    clean_email = student_email.strip().lower() if student_email else ""
+    if not clean_email or any(clean_email.endswith(d) for d in ['@university.edu', '@student.edu', '@example.com']):
+        clean_email = f"{student_roll.strip().lower()}@hkbk.edu.in"
+
     if existing:
         existing.file_path = str(dest_path)
         existing.original_filename = file.filename
+        existing.student_email = clean_email
         existing.extracted_text = parse_res["text"]
         existing.ocr_confidence = parse_res["confidence"]
         existing.is_ocr_verified = True
@@ -162,7 +189,7 @@ async def submit_public_answer_sheet(
         exam_id=exam.id,
         student_roll=student_roll.strip().upper(),
         student_name=student_name.strip(),
-        student_email=student_email.strip().lower(),
+        student_email=clean_email,
         original_filename=file.filename,
         file_path=str(dest_path),
         file_type=parse_res["file_type"],

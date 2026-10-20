@@ -37,6 +37,8 @@ class SubmissionDetailResponse(SubmissionResponse):
 class TextCorrectionRequest(BaseModel):
     submission_id: int
     corrected_text: str
+    student_roll: Optional[str] = None
+    student_name: Optional[str] = None
     reason: Optional[str] = "Teacher OCR text verification correction"
 
 class StudentPublicResultResponse(BaseModel):

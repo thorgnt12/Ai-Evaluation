@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { LogoutModal } from './LogoutModal';
 import { ThemeToggle } from './ThemeToggle';
 
-export const Navbar = ({ currentView, setView, onRefreshExams, onShowLogoutToast }) => {
+export const Navbar = ({ currentView, setView, onCreateExam, onRefreshExams, onShowLogoutToast }) => {
   const { user, logout } = useAuth();
   const [seeding, setSeeding] = useState(false);
   const [seedSuccess, setSeedSuccess] = useState(false);
@@ -99,7 +99,13 @@ export const Navbar = ({ currentView, setView, onRefreshExams, onShowLogoutToast
               </button>
 
               <button
-                onClick={() => setView('wizard')}
+                onClick={() => {
+                  if (onCreateExam) {
+                    onCreateExam();
+                  } else {
+                    setView('wizard');
+                  }
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-2 transition-all cursor-pointer ${
                   currentView === 'wizard' 
                     ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm font-semibold' 
@@ -188,7 +194,7 @@ export const Navbar = ({ currentView, setView, onRefreshExams, onShowLogoutToast
                   </div>
                   <div className="text-[10px] text-indigo-500 dark:text-indigo-400 flex items-center gap-1 font-medium">
                     <Shield className="w-2.5 h-2.5 inline" />
-                    <span>Evaluator</span>
+                    <span>{user.role === 'admin' || user.role === 'college_admin' ? 'College Admin' : 'Course Teacher'}</span>
                   </div>
                 </div>
 
@@ -214,8 +220,8 @@ export const Navbar = ({ currentView, setView, onRefreshExams, onShowLogoutToast
                         <div className="text-[11px] text-slate-400 dark:text-slate-400 truncate">
                           {user.email}
                         </div>
-                        <span className="inline-block mt-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                          Active Session
+                        <span className="inline-block mt-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                          {user.role === 'admin' || user.role === 'college_admin' ? 'College Admin (All Exams)' : 'Course Teacher (Own Exams)'}
                         </span>
                       </div>
                     </div>
@@ -236,8 +242,12 @@ export const Navbar = ({ currentView, setView, onRefreshExams, onShowLogoutToast
 
                     <button
                       onClick={() => {
-                        setView('wizard');
                         setDropdownOpen(false);
+                        if (onCreateExam) {
+                          onCreateExam();
+                        } else {
+                          setView('wizard');
+                        }
                       }}
                       className="w-full px-3 py-2 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
                     >

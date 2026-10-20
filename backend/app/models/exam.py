@@ -33,10 +33,13 @@ class Exam(Base):
     question_paper_text = Column(Text, nullable=True)
     
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    assigned_teacher_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    creator = relationship("User", foreign_keys=[created_by_id])
+    assigned_teacher = relationship("User", foreign_keys=[assigned_teacher_id])
     questions = relationship("Question", back_populates="exam", cascade="all, delete-orphan", order_by="Question.order_idx")
     submissions = relationship("Submission", back_populates="exam", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="exam", cascade="all, delete-orphan")

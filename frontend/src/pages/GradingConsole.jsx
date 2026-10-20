@@ -132,18 +132,64 @@ export const GradingConsole = ({ examId, setView }) => {
           )}
         </div>
 
-        {/* Evaluation Summary Card */}
-        {gradeResult && (
-          <div className="p-6 rounded-2xl bg-emerald-50/80 border border-emerald-200 space-y-4 animate-fade-in">
+        {/* Live Evaluation In-Progress Animation */}
+        {grading && (
+          <div className="p-6 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 space-y-4 animate-fade-in">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700">
-                <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0" />
+              <RefreshCw className="w-6 h-6 text-indigo-600 dark:text-indigo-400 animate-spin shrink-0" />
+              <div>
+                <h3 className="text-sm font-bold text-indigo-900 dark:text-indigo-200">
+                  AI Evaluation Engine Active...
+                </h3>
+                <p className="text-xs text-indigo-700 dark:text-indigo-400 mt-0.5">
+                  Parsing student responses, evaluating criteria alignment, and computing best-of-choice scores.
+                </p>
+              </div>
+            </div>
+            <div className="w-full bg-indigo-200/60 dark:bg-indigo-900/60 rounded-full h-2 overflow-hidden">
+              <div className="bg-indigo-600 dark:bg-indigo-400 h-2 rounded-full animate-pulse w-4/5" />
+            </div>
+          </div>
+        )}
+
+        {/* Status banner when already graded */}
+        {!grading && !gradeResult && ['graded', 'in_review', 'finalized'].includes(exam?.status) && (
+          <div className="p-6 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
+                <CheckCircle2 className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-emerald-900">
+                <h4 className="text-sm font-bold text-emerald-900 dark:text-emerald-200">
+                  Submissions Graded & Ready for Review
+                </h4>
+                <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-0.5">
+                  AI evaluation has already completed for this exam. You can inspect question-level evidence and apply overrides.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setView('review')}
+              className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 shadow-xs cursor-pointer transition-all shrink-0"
+            >
+              <span>Open Teacher Review Matrix</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Evaluation Summary Card */}
+        {gradeResult && (
+          <div className="p-6 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 space-y-4 animate-fade-in">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
+                <CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-emerald-900 dark:text-emerald-200">
                   AI Evaluation Completed Successfully!
                 </h3>
-                <p className="text-xs text-emerald-700">
+                <p className="text-xs text-emerald-700 dark:text-emerald-400">
                   Graded {gradeResult.graded_submissions} student script(s).
                 </p>
               </div>
@@ -152,19 +198,19 @@ export const GradingConsole = ({ examId, setView }) => {
             {/* Quick Result Chips */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
               {gradeResult.results?.map((r, idx) => (
-                <div key={idx} className="p-4 rounded-xl bg-white border border-slate-200 space-y-2 text-xs shadow-xs">
+                <div key={idx} className="p-4 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2 text-xs shadow-xs">
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="font-bold text-slate-900">{r.student_name || r.student_roll}</span>
-                      <span className="block text-[11px] text-slate-500 font-mono">{r.student_roll}</span>
+                      <span className="font-bold text-slate-900 dark:text-slate-100">{r.student_name || r.student_roll}</span>
+                      <span className="block text-[11px] text-slate-500 dark:text-slate-400 font-mono">{r.student_roll}</span>
                     </div>
-                    <Badge variant="success" size="sm">{r.score} / 50M ({r.percentage}%)</Badge>
+                    <Badge variant="success" size="sm">{r.score} / {exam?.total_marks || 50}M ({r.percentage}%)</Badge>
                   </div>
                   {r.module_breakdown && (
-                    <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-slate-100">
+                    <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-slate-100 dark:border-slate-700">
                       {Object.entries(r.module_breakdown).map(([modName, modInfo]) => (
-                        <span key={modName} className="text-[10px] px-2 py-0.5 rounded bg-slate-50 border border-slate-200 text-slate-700 font-mono">
-                          {modName} ({modInfo.selected_option}): <b className="text-emerald-700 font-bold">{modInfo.awarded_marks}</b>/{modInfo.module_max_marks}M
+                        <span key={modName} className="text-[10px] px-2 py-0.5 rounded bg-slate-50 dark:bg-slate-750 border border-slate-200 dark:border-slate-650 text-slate-700 dark:text-slate-300 font-mono">
+                          {modName} ({modInfo.selected_option}): <b className="text-emerald-700 dark:text-emerald-400 font-bold">{modInfo.awarded_marks}</b>/{modInfo.module_max_marks}M
                         </span>
                       ))}
                     </div>

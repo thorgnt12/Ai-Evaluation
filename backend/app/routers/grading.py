@@ -14,6 +14,8 @@ from ..config import OCR_CONFIDENCE_THRESHOLD
 from ..services.ai_grader import ai_grader
 from ..services.module_evaluator import evaluate_submission_modules
 from ..utils.text_utils import clean_text
+from ..models.user import User
+from .auth import get_current_user
 
 router = APIRouter(prefix="/api/exams", tags=["AI Grading Engine"])
 
@@ -34,11 +36,22 @@ def split_student_text_by_questions(
 def run_exam_grading(
     exam_id: int,
     request: BatchGradingRequest = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
-    if not exam:
-        raise HTTPException(status_code=404, detail="Exam not found")
+    if current_user.role in ["admin", "college_admin"]:
+        is_authorized = True
+    elif exam.assigned_teacher_id is not None:
+        is_authorized = (exam.assigned_teacher_id == current_user.id)
+    else:
+        is_authorized = (exam.created_by_id == current_user.id)
+
+    if not is_authorized:
+        raise HTTPException(
+            status_code=403, 
+            detail="Access denied: As a course instructor, you can only trigger grading for exams assigned to you."
+        )
 
     questions = sorted(exam.questions, key=lambda q: q.order_idx)
     if not questions:

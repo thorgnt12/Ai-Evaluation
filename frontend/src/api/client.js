@@ -24,15 +24,20 @@ export const examsApi = {
   create: (data) => api.post('/exams', data),
   update: (id, data) => api.put(`/exams/${id}`, data),
   delete: (id) => api.delete(`/exams/${id}`),
+  getTeachers: () => api.get('/exams/teachers/list'),
+  assignTeacher: (examId, teacherId) => api.put(`/exams/${examId}/assign-teacher`, { teacher_id: teacherId }),
 };
 
 export const questionsApi = {
+  list: (examId) => api.get(`/exams/${examId}`).then(res => ({ data: res.data?.questions || [] })),
   uploadQP: (examId, formData) => api.post(`/exams/${examId}/upload-question-paper`, formData),
   uploadKnowledge: (examId, formData) => api.post(`/exams/${examId}/upload-knowledge-document`, formData),
   saveQuestions: (examId, questions) => api.post(`/exams/${examId}/save-questions`, questions),
   updateQuestion: (questionId, data) => api.put(`/questions/${questionId}`, data),
   generateWebAnswers: (examId, data) => api.post(`/exams/${examId}/generate-web-answers`, data),
   generateSingleWebAnswer: (examId, data) => api.post(`/exams/${examId}/generate-single-web-answer`, data),
+  downloadWebAnswersPdf: (examId, data = {}) => api.post(`/exams/${examId}/export/web-answers-pdf`, data, { responseType: 'blob' }),
+  getWebAnswersPdfUrl: (examId) => `/api/exams/${examId}/export/web-answers-pdf`,
 };
 
 export const lensApi = {
@@ -70,6 +75,8 @@ export const analyticsApi = {
 export const reportsApi = {
   getExcelUrl: (examId) => `/api/exams/${examId}/export/excel`,
   getPdfUrl: (submissionId) => `/api/submissions/${submissionId}/export/pdf`,
+  getWebAnswersPdfUrl: (examId) => `/api/exams/${examId}/export/web-answers-pdf`,
+  downloadWebAnswersPdf: (examId, data = {}) => api.post(`/exams/${examId}/export/web-answers-pdf`, data, { responseType: 'blob' }),
   sendTestEmail: (examId, teacherEmail) => api.post(`/exams/${examId}/dispatch/test-email?teacher_email=${encodeURIComponent(teacherEmail)}`),
   dispatchBulk: (examId) => api.post(`/exams/${examId}/dispatch/bulk-email`),
 };

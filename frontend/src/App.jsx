@@ -13,11 +13,13 @@ import { ReportsPage } from './pages/ReportsPage';
 import { StudentPortal } from './pages/StudentPortal';
 import { examsApi } from './api/client';
 import { CheckCircle2, GraduationCap } from 'lucide-react';
+import { ExamWorkspaceNav } from './components/ExamWorkspaceNav';
 
 function AppContent() {
   const { user, authLoading } = useAuth();
   const [currentView, setView] = useState('dashboard');
   const [selectedExamId, setSelectedExamId] = useState(null);
+  const [wizardResumeExamId, setWizardResumeExamId] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [toastMessage, setToastMessage] = useState('');
 
@@ -38,7 +40,19 @@ function AppContent() {
     setRefreshTrigger(prev => prev + 1);
   };
 
+  const handleCreateNewExam = () => {
+    setWizardResumeExamId(null);
+    setView('wizard');
+  };
+
+  const handleResumeExam = (examId) => {
+    setWizardResumeExamId(examId);
+    setSelectedExamId(examId);
+    setView('wizard');
+  };
+
   const handleExamCreated = (newExamId) => {
+    setWizardResumeExamId(null);
     setSelectedExamId(newExamId);
     handleRefreshExams();
   };
@@ -70,6 +84,7 @@ function AppContent() {
       <Navbar 
         currentView={effectiveView} 
         setView={setView} 
+        onCreateExam={handleCreateNewExam}
         onRefreshExams={handleRefreshExams}
         onShowLogoutToast={() => showToast('Signed out successfully. You can log back in with demo credentials anytime.')}
       />
@@ -84,6 +99,16 @@ function AppContent() {
         </div>
       )}
 
+      {/* Exam Workspace Context & 5-Stage Module Navigation Bar */}
+      {['submissions', 'grading', 'review', 'analytics', 'reports'].includes(effectiveView) && selectedExamId && user && (
+        <ExamWorkspaceNav 
+          examId={selectedExamId}
+          currentView={effectiveView}
+          setView={setView}
+          onRefresh={handleRefreshExams}
+        />
+      )}
+
       <main className="flex-1 pb-16">
         {effectiveView === 'login' && (
           <LoginPage setView={setView} />
@@ -94,12 +119,18 @@ function AppContent() {
             key={refreshTrigger}
             setView={setView} 
             setSelectedExamId={setSelectedExamId}
+            onCreateExam={handleCreateNewExam}
+            onResumeExam={handleResumeExam}
           />
         )}
 
         {effectiveView === 'wizard' && user && (
           <ExamWizard 
+            key={wizardResumeExamId ? `resume-${wizardResumeExamId}` : 'new-exam'}
             setView={setView} 
+            resumeExamId={wizardResumeExamId}
+            setSelectedExamId={setSelectedExamId}
+            setWizardResumeExamId={setWizardResumeExamId}
             onExamCreated={handleExamCreated}
           />
         )}
@@ -109,6 +140,7 @@ function AppContent() {
             key={`${selectedExamId}-${refreshTrigger}`}
             examId={selectedExamId} 
             setView={setView} 
+            onResumeExam={handleResumeExam}
           />
         )}
 
@@ -154,11 +186,66 @@ function AppContent() {
   );
 }
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("SmartGrade UI ErrorBoundary caught an error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mb-4 border border-rose-200">
+            <GraduationCap className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">Something went wrong</h2>
+          <p className="text-xs text-slate-500 max-w-md mb-6 leading-relaxed">
+            {this.state.error?.message || 'An unexpected rendering error occurred. Please click below to reload.'}
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                this.setState({ hasError: false, error: null });
+                window.location.reload();
+              }}
+              className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-xs shadow-sm hover:bg-indigo-700 transition-all cursor-pointer"
+            >
+              Reload Application
+            </button>
+            <button
+              onClick={() => {
+                localStorage.removeItem('smartgrade_token');
+                localStorage.removeItem('smartgrade_user');
+                window.location.href = '/';
+              }}
+              className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors cursor-pointer"
+            >
+              Reset Session
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <AppContent />
+        <ErrorBoundary>
+          <AppContent />
+        </ErrorBoundary>
       </AuthProvider>
     </ThemeProvider>
   );

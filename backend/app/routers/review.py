@@ -14,14 +14,28 @@ from ..schemas.evaluation_schema import MarkOverrideRequest, FinalizeExamRequest
 from ..schemas.report_schema import ReviewMatrixResponse, MatrixStudentRow, AuditLogResponse
 from ..config import OCR_CONFIDENCE_THRESHOLD
 from ..services.module_evaluator import evaluate_submission_modules, infer_module_and_choice
+from ..models.user import User
+from .auth import get_current_user
 
 router = APIRouter(prefix="/api", tags=["Teacher Review & Overrides"])
 
 @router.get("/exams/{exam_id}/review-matrix", response_model=ReviewMatrixResponse)
-def get_review_matrix(exam_id: int, db: Session = Depends(get_db)):
+def get_review_matrix(exam_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     exam = db.query(Exam).filter(Exam.id == exam_id).first()
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
+    if current_user.role in ["admin", "college_admin"]:
+        is_authorized = True
+    elif exam.assigned_teacher_id is not None:
+        is_authorized = (exam.assigned_teacher_id == current_user.id)
+    else:
+        is_authorized = (exam.created_by_id == current_user.id)
+
+    if not is_authorized:
+        raise HTTPException(
+            status_code=403, 
+            detail="Access denied: As a course instructor, you can only view review matrices for exams assigned to you."
+        )
 
     questions = sorted(exam.questions, key=lambda q: q.order_idx)
     q_meta = []
